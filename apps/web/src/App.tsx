@@ -1,6 +1,6 @@
 import {
   AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp,
-  Clock3, DoorOpen, LayoutDashboard, LogOut, Plus, Search, Settings2, Users, X
+  Clock3, Copy, DoorOpen, LayoutDashboard, LogOut, Plus, Search, Settings2, ShieldCheck, Users, UserPlus, X
 } from "lucide-react";
 import {
   addDays, addWeeks, format, isSameDay, isToday, startOfWeek, subWeeks
@@ -11,8 +11,9 @@ import { api, ApiError } from "./api";
 import type { Booking, BookingInput, Room, User } from "./types";
 
 type AuthResponse = { user: User; token: string };
-type View = "overview" | "calendar" | "bookings" | "rooms";
+type View = "overview" | "calendar" | "bookings" | "rooms" | "users";
 type Notice = { kind: "success" | "error"; text: string };
+type CreatedCredential = { name: string; email: string; temporaryPassword: string };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const prettyDate = (date: string, options?: Intl.DateTimeFormatOptions) =>
@@ -31,6 +32,7 @@ export default function App() {
   const [showBooking, setShowBooking] = useState(false);
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<CreatedCredential[]>([]);
   const [week, setWeek] = useState(new Date());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -101,6 +103,7 @@ export default function App() {
     setUser(null);
     setRooms([]);
     setBookings([]);
+    setCreatedCredentials([]);
   }
 
   async function submitBooking(input: BookingInput, recurrenceCount: number) {
@@ -164,6 +167,28 @@ export default function App() {
     }
   }
 
+  async function createUsers(users: { name: string; email: string }[]) {
+    if (!token) return false;
+    setCreatedCredentials([]);
+    try {
+      const result = await api<{ created: CreatedCredential[] }>("/api/users/bulk", {
+        method: "POST",
+        body: JSON.stringify({ users })
+      }, token);
+      setCreatedCredentials(result.created);
+      setNotice({ kind: "success", text: `Đã tạo ${result.created.length} tài khoản người dùng.` });
+      return true;
+    } catch (error) {
+      handleError(error);
+      return false;
+    }
+  }
+
+  function navigate(nextView: View) {
+    if (nextView !== "users") setCreatedCredentials([]);
+    setView(nextView);
+  }
+
   if (!token) {
     return <LoginScreen onLogin={completeLogin} onError={handleError} />;
   }
@@ -173,20 +198,21 @@ export default function App() {
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { id: "calendar", label: "Lịch phòng", icon: CalendarDays },
     { id: "bookings", label: "Quản lý đặt phòng", icon: Clock3 },
-    { id: "rooms", label: "Danh sách phòng", icon: DoorOpen }
+    { id: "rooms", label: "Quản lý phòng", icon: DoorOpen },
+    ...(user.role === "ADMIN" ? [{ id: "users" as const, label: "Tài khoản người dùng", icon: UserPlus }] : [])
   ];
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setView("overview"); }}>
+        <a className="brand" href="/" onClick={(event) => { event.preventDefault(); navigate("overview"); }}>
           <span className="brand-mark"><DoorOpen size={21} /></span>
           <span>roomly<span className="brand-dot">.</span></span>
         </a>
         <div className="workspace-label">WORKSPACE</div>
         <nav className="nav-list" aria-label="Điều hướng chính">
           {navigation.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => setView(id)}>
+            <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => navigate(id)}>
               <Icon size={18} strokeWidth={1.8} /> <span>{label}</span>
               {id === "bookings" && <span className="nav-count">{upcoming.length}</span>}
             </button>
@@ -220,7 +246,7 @@ export default function App() {
         <div className="page-content">
           {loading ? <div className="loading-state"><span className="spinner" /> Đang tải dữ liệu…</div> : (
             <>
-              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} onCreate={() => setShowBooking(true)} onNavigate={setView} onCancel={cancel} />}
+              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} onCreate={() => setShowBooking(true)} onNavigate={navigate} onCancel={cancel} />}
               {view === "calendar" && <CalendarView bookings={bookings} week={week} rooms={rooms} onWeekChange={setWeek} onCreate={() => setShowBooking(true)} />}
               {view === "bookings" && (
                 <BookingsView
@@ -242,6 +268,11 @@ export default function App() {
                   handleError(error);
                 }
               }} />}
+              {view === "users" && user.role === "ADMIN" && <UsersView
+                createdCredentials={createdCredentials}
+                onCreate={createUsers}
+                onClearCredentials={() => setCreatedCredentials([])}
+              />}
             </>
           )}
         </div>
@@ -416,6 +447,133 @@ function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
       <PageHeading eyebrow="KHÔNG GIAN LÀM VIỆC" title="Danh sách phòng" description="Tìm phòng phù hợp cho cuộc họp tiếp theo." action={canManage ? <button className="button button-primary" onClick={onCreate}><Plus size={17} /> Thêm phòng</button> : undefined} />
       <div className="rooms-grid">{rooms.map((room, index) => <article key={room.id} className={`room-card room-art-${index % 3}`}><div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div><div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className={`room-status ${room.status === "ACTIVE" ? "active" : "inactive"}`}><i />{room.status === "ACTIVE" ? "Sẵn sàng" : "Tạm ngưng"}</span></div><div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span><span><CalendarDays size={16} /> Đặt theo giờ</span></div><div className="room-card-foot"><span>Phòng họp · {room.location}</span>{canManage && <div className="room-admin-actions"><button className="table-action" onClick={() => onEdit(room)}>Chỉnh sửa</button><button className="table-action" onClick={() => onUpdate(room)}>{room.status === "ACTIVE" ? "Ngừng sử dụng" : "Kích hoạt"}</button></div>}</div></div></article>)}</div>
       {!rooms.length && <div className="panel"><EmptyState title="Chưa có phòng nào" text="Thêm phòng họp đầu tiên vào hệ thống." action={<button className="button button-primary button-small" onClick={onCreate}><Plus size={15} /> Thêm phòng</button>} /></div>}
+    </>
+  );
+}
+
+function UsersView({ createdCredentials, onCreate, onClearCredentials }: {
+  createdCredentials: CreatedCredential[];
+  onCreate: (users: { name: string; email: string }[]) => Promise<boolean>;
+  onClearCredentials: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const lines = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const rows = lines.filter((line, index) =>
+      !(index === 0 && /^(name|tên)\s*,\s*(e-?mail)$/i.test(line))
+    );
+    if (!rows.length) {
+      setError("Nhập ít nhất một dòng theo định dạng: Tên, email.");
+      return;
+    }
+    if (rows.length > 50) {
+      setError("Mỗi lần có thể tạo tối đa 50 tài khoản.");
+      return;
+    }
+    const users = rows.map((line) => {
+      const separator = line.lastIndexOf(",");
+      if (separator < 1) return null;
+      const name = line.slice(0, separator).trim();
+      const email = line.slice(separator + 1).trim().toLowerCase();
+      if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+      return { name, email };
+    });
+    if (users.some((user) => user === null)) {
+      setError("Có dòng chưa hợp lệ. Mỗi dòng cần có tên và email hợp lệ, phân cách bằng dấu phẩy.");
+      return;
+    }
+    const validUsers = users.filter((user): user is { name: string; email: string } => user !== null);
+    const emailSet = new Set(validUsers.map((user) => user.email));
+    if (emailSet.size !== validUsers.length) {
+      setError("Danh sách có email bị lặp. Hãy bỏ email trùng trước khi tạo.");
+      return;
+    }
+    setBusy(true);
+    if (await onCreate(validUsers)) {
+      setInput("");
+      setCopyMessage("");
+    }
+    setBusy(false);
+  }
+
+  async function copyCredentials() {
+    const csv = [
+      "Tên,Email,Mật khẩu tạm",
+      ...createdCredentials.map(({ name, email, temporaryPassword }) =>
+        [name, email, temporaryPassword].map((value) => `"${value.replaceAll('"', '""')}"`).join(",")
+      )
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(csv);
+      setCopyMessage("Đã sao chép danh sách mật khẩu.");
+    } catch {
+      setCopyMessage("Không thể sao chép tự động. Hãy chọn và sao chép nội dung trong bảng.");
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="QUẢN TRỊ HỆ THỐNG"
+        title="Tài khoản người dùng"
+        description="Tạo hàng loạt tài khoản thành viên. Chỉ quản trị viên mới có quyền sử dụng."
+      />
+      <div className="users-admin-grid">
+        <section className="panel users-import-panel">
+          <div className="panel-heading">
+            <div><h2>Thêm tài khoản hàng loạt</h2><p>Nhập mỗi người dùng trên một dòng, tối đa 50 tài khoản.</p></div>
+            <span className="quick-icon lavender"><UserPlus size={18} /></span>
+          </div>
+          <div className="import-example">
+            <strong>Định dạng danh sách</strong>
+            <code>Tên, email</code>
+            <code>Nguyễn Văn An, an@congty.vn</code>
+            <code>Trần Thị Bình, binh@congty.vn</code>
+          </div>
+          <form className="form-stack" onSubmit={submit}>
+            <label>Danh sách người dùng
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder={"Tên, email\nNguyễn Văn An, an@congty.vn\nTrần Thị Bình, binh@congty.vn"}
+                rows={9}
+                maxLength={15000}
+                required
+              />
+            </label>
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <p className="form-hint"><ShieldCheck size={16} /> Tài khoản mới luôn có quyền thành viên, không thể tự cấp quyền quản trị.</p>
+            <button className="button button-primary" disabled={busy}>
+              <UserPlus size={16} /> {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản"}
+            </button>
+          </form>
+        </section>
+        <aside className="panel users-security-panel">
+          <span className="users-security-icon"><ShieldCheck size={24} /></span>
+          <h2>Mật khẩu riêng cho từng người</h2>
+          <p>Mỗi tài khoản được cấp một mật khẩu ngẫu nhiên. Mật khẩu chỉ hiển thị một lần ngay sau khi tạo thành công.</p>
+          <p>Hãy sao chép và gửi thông tin đăng nhập cho đúng người dùng qua kênh riêng tư. Khi rời mục này, danh sách mật khẩu sẽ bị xóa khỏi màn hình.</p>
+        </aside>
+      </div>
+      {createdCredentials.length > 0 && (
+        <section className="panel credentials-panel">
+          <div className="panel-heading">
+            <div><h2>Đã tạo {createdCredentials.length} tài khoản</h2><p>Sao chép danh sách này ngay; mật khẩu sẽ không thể xem lại sau khi rời trang.</p></div>
+            <div className="credentials-actions">
+              <button className="button button-outline button-small" onClick={() => void copyCredentials()}><Copy size={15} /> Sao chép danh sách</button>
+              <button className="icon-button" aria-label="Ẩn mật khẩu" onClick={onClearCredentials}><X size={17} /></button>
+            </div>
+          </div>
+          <div className="table-wrap"><table><thead><tr><th>TÊN</th><th>EMAIL</th><th>MẬT KHẨU TẠM</th></tr></thead><tbody>{createdCredentials.map((credential) => <tr key={credential.email}><td><strong>{credential.name}</strong></td><td>{credential.email}</td><td><code className="temporary-password">{credential.temporaryPassword}</code></td></tr>)}</tbody></table></div>
+          {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
+        </section>
+      )}
     </>
   );
 }

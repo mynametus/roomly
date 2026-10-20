@@ -28,3 +28,19 @@ export const roomSchema = z.object({
   location: z.string().trim().min(1).max(120),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE")
 });
+
+export const bulkUsersSchema = z.object({
+  users: z.array(registerSchema.pick({ name: true, email: true })).min(1).max(50)
+}).superRefine(({ users }, context) => {
+  const seen = new Set<string>();
+  users.forEach((user, index) => {
+    if (seen.has(user.email)) {
+      context.addIssue({
+        code: "custom",
+        path: ["users", index, "email"],
+        message: `Email ${user.email} bị lặp trong danh sách.`
+      });
+    }
+    seen.add(user.email);
+  });
+});
