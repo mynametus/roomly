@@ -1,7 +1,22 @@
 import "dotenv/config";
 import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
-import helmet from "helmet";
+import {
+  contentSecurityPolicy,
+  crossOriginEmbedderPolicy,
+  crossOriginOpenerPolicy,
+  crossOriginResourcePolicy,
+  hidePoweredBy,
+  hsts,
+  noSniff,
+  originAgentCluster,
+  permittedCrossDomainPolicies,
+  referrerPolicy,
+  xDnsPrefetchControl,
+  xDownloadOptions,
+  xFrameOptions,
+  xssFilter
+} from "helmet";
 import { ZodError } from "zod";
 import { AppError } from "./lib/errors.js";
 import { authRouter } from "./routes/auth.js";
@@ -13,7 +28,22 @@ import { requireAuth } from "./middleware/auth.js";
 export const app = express();
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(
+  contentSecurityPolicy(),
+  crossOriginEmbedderPolicy(),
+  crossOriginOpenerPolicy(),
+  crossOriginResourcePolicy(),
+  hidePoweredBy(),
+  hsts(),
+  noSniff(),
+  originAgentCluster(),
+  permittedCrossDomainPolicies(),
+  referrerPolicy(),
+  xDnsPrefetchControl(),
+  xDownloadOptions(),
+  xFrameOptions(),
+  xssFilter()
+);
 app.use(cors({
   origin: process.env.FRONTEND_URL?.split(",").map((origin) => origin.trim()) ?? "http://localhost:5173"
 }));
