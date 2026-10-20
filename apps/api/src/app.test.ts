@@ -41,6 +41,15 @@ describe("Roomly API", () => {
     ]));
   });
 
+  it("disables public account registration", async () => {
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "New Member", email: "new-member@example.com", password: "long-password" });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toContain("Đăng ký tài khoản đã tắt");
+  });
+
   it("returns a structured 404 for unknown API routes", async () => {
     const response = await request(app).get("/api/missing");
     expect(response.status).toBe(404);

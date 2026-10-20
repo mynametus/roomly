@@ -23,7 +23,7 @@ npm run db:seed
 npm run dev
 ```
 
-Mở `http://localhost:5173`. Đăng nhập bằng email và mật khẩu quản trị viên đã khai báo trong `.env`. Người dùng khác có thể tự đăng ký từ màn hình đăng nhập.
+Mở `http://localhost:5173`. Đăng nhập bằng email và mật khẩu quản trị viên đã khai báo trong `.env`. Đây là ứng dụng nội bộ: tự đăng ký đã tắt, quản trị viên cấp tài khoản từ mục **Quản lý tài khoản**.
 
 `db:seed` tạo ba phòng mẫu. Nếu có `ADMIN_EMAIL` và `ADMIN_PASSWORD`, lệnh cũng tạo hoặc nâng tài khoản đó lên quyền quản trị viên. Không dùng mật khẩu mẫu khi triển khai thật.
 

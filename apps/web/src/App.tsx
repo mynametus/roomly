@@ -394,7 +394,6 @@ export default function App() {
 }
 
 function LoginScreen({ onLogin, onError }: { onLogin: (data: AuthResponse) => void; onError: (error: unknown) => void }) {
-  const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -404,7 +403,7 @@ function LoginScreen({ onLogin, onError }: { onLogin: (data: AuthResponse) => vo
     const body = Object.fromEntries(form.entries());
     try {
       setErrorMessage("");
-      const result = await api<AuthResponse>(`/api/auth/${register ? "register" : "login"}`, {
+      const result = await api<AuthResponse>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify(body)
       });
@@ -421,16 +420,15 @@ function LoginScreen({ onLogin, onError }: { onLogin: (data: AuthResponse) => vo
       <div className="auth-card">
         <a className="brand auth-brand" href="/"><span className="brand-mark"><DoorOpen size={21} /></span><span>roomly<span className="brand-dot">.</span></span></a>
         <div className="eyebrow">KHÔNG GIAN LÀM VIỆC CỦA BẠN</div>
-        <h1>{register ? "Tạo tài khoản" : "Chào mừng trở lại"}</h1>
-        <p className="muted">{register ? "Đăng ký để bắt đầu đặt phòng họp." : "Đăng nhập để quản lý lịch phòng họp."}</p>
+        <h1>Chào mừng trở lại</h1>
+        <p className="muted">Đăng nhập bằng tài khoản do quản trị viên công ty cấp.</p>
         <form className="form-stack" onSubmit={submit}>
-          {register && <label>Họ và tên<input name="name" required minLength={2} maxLength={80} placeholder="Nguyễn Văn An" autoComplete="name" /></label>}
           <label>Email<input name="email" required type="email" placeholder="ban@congty.vn" autoComplete="email" /></label>
-          <label>Mật khẩu<input name="password" required type="password" minLength={register ? 8 : 1} placeholder={register ? "Tối thiểu 8 ký tự" : "Nhập mật khẩu"} autoComplete={register ? "new-password" : "current-password"} /></label>
-          <button className="button button-primary button-wide" disabled={busy}>{busy ? "Đang xử lý…" : register ? "Tạo tài khoản" : "Đăng nhập"} <ArrowRight size={17} /></button>
+          <label>Mật khẩu<input name="password" required type="password" minLength={1} placeholder="Nhập mật khẩu" autoComplete="current-password" /></label>
+          <button className="button button-primary button-wide" disabled={busy}>{busy ? "Đang xử lý…" : "Đăng nhập"} <ArrowRight size={17} /></button>
         </form>
         {errorMessage && <p className="auth-error" role="alert">{errorMessage}</p>}
-        <p className="auth-switch">{register ? "Đã có tài khoản?" : "Chưa có tài khoản?"} <button onClick={() => setRegister((value) => !value)}>{register ? "Đăng nhập" : "Đăng ký"}</button></p>
+        <p className="auth-switch">Chưa có tài khoản? Liên hệ quản trị viên công ty để được cấp.</p>
         <div className="auth-foot">Đặt đúng phòng. Họp đúng giờ.</div>
       </div>
       <div className="auth-aside">

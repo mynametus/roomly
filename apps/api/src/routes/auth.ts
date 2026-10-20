@@ -2,25 +2,13 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../lib/errors.js";
-import { changePasswordSchema, loginSchema, registerSchema } from "../lib/validation.js";
+import { changePasswordSchema, loginSchema } from "../lib/validation.js";
 import { createToken, requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 
 export const authRouter = Router();
 
-authRouter.post("/register", async (request, response) => {
-  const input = registerSchema.parse(request.body);
-  const existing = await prisma.user.findUnique({ where: { email: input.email } });
-  if (existing) throw new AppError("Email này đã được đăng ký.", 409);
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      passwordHash: await bcrypt.hash(input.password, 12),
-      mustChangePassword: false
-    },
-    select: { id: true, name: true, email: true, role: true, mustChangePassword: true, isActive: true }
-  });
-  response.status(201).json({ user, token: createToken(user) });
+authRouter.post("/register", (_request, _response, next) => {
+  next(new AppError("Đăng ký tài khoản đã tắt. Vui lòng liên hệ quản trị viên để được cấp tài khoản.", 403));
 });
 
 authRouter.post("/login", async (request, response) => {
