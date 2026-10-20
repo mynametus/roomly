@@ -4,6 +4,7 @@ export type User = {
   email: string;
   role: "USER" | "ADMIN";
   mustChangePassword: boolean;
+  isActive: boolean;
 };
 
 export type Room = {
@@ -11,6 +12,7 @@ export type Room = {
   name: string;
   capacity: number;
   location: string;
+  amenities: string[];
   status: "ACTIVE" | "INACTIVE";
 };
 

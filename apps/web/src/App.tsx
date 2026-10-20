@@ -1,6 +1,7 @@
 import {
   AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp, MessageCircle,
-  Clock3, Copy, DoorOpen, LayoutDashboard, LogOut, Plus, Search, Settings2, ShieldCheck, Users, UserPlus, X
+  Clock3, Copy, DoorOpen, LayoutDashboard, LogOut, Plus, Search, Settings2, ShieldCheck, Users,
+  UserPlus, X, CalendarSearch, ChartNoAxesCombined, UserRoundCog, RotateCcw, Ban, CheckCircle2
 } from "lucide-react";
 import {
   addDays, addWeeks, format, isSameDay, isToday, startOfWeek, subWeeks
@@ -11,9 +12,11 @@ import { api, ApiError } from "./api";
 import type { Booking, BookingInput, Room, User } from "./types";
 
 type AuthResponse = { user: User; token: string };
-type View = "overview" | "calendar" | "bookings" | "rooms" | "users";
+type View = "overview" | "availability" | "calendar" | "bookings" | "rooms" | "users" | "reports";
 type Notice = { kind: "success" | "error"; text: string };
 type CreatedAccount = { name: string; email: string };
+type AvailableRoomSearch = { startTime: string; endTime: string; attendeeCount: number; amenities: string[] };
+type AccountRecord = Pick<User, "id" | "name" | "email" | "role" | "isActive" | "mustChangePassword"> & { createdAt: string };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const prettyDate = (date: string, options?: Intl.DateTimeFormatOptions) =>
@@ -30,6 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [showBooking, setShowBooking] = useState(false);
+  const [bookingDefaults, setBookingDefaults] = useState<Partial<BookingInput>>();
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [showZaloContact, setShowZaloContact] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -190,6 +194,50 @@ export default function App() {
     }
   }
 
+  function openBooking(defaults?: Partial<BookingInput>) {
+    setBookingDefaults(defaults);
+    setShowBooking(true);
+  }
+
+  async function searchAvailableRooms(input: AvailableRoomSearch) {
+    if (!token) return [];
+    const query = new URLSearchParams({
+      startTime: input.startTime,
+      endTime: input.endTime,
+      attendeeCount: String(input.attendeeCount)
+    });
+    input.amenities.forEach((amenity) => query.append("amenities", amenity));
+    const result = await api<{ rooms: Room[] }>(`/api/rooms/available?${query.toString()}`, {}, token);
+    return result.rooms;
+  }
+
+  async function updateAccountStatus(account: AccountRecord, isActive: boolean) {
+    if (!token) return false;
+    try {
+      await api(`/api/users/${encodeURIComponent(account.id)}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive })
+      }, token);
+      setNotice({ kind: "success", text: `${isActive ? "Đã kích hoạt" : "Đã khóa"} tài khoản ${account.email}.` });
+      return true;
+    } catch (error) {
+      handleError(error);
+      return false;
+    }
+  }
+
+  async function resetAccountPassword(account: AccountRecord) {
+    if (!token) return null;
+    try {
+      return await api<{ temporaryPassword: string }>(`/api/users/${encodeURIComponent(account.id)}/reset-password`, {
+        method: "POST"
+      }, token);
+    } catch (error) {
+      handleError(error);
+      return null;
+    }
+  }
+
   function navigate(nextView: View) {
     if (nextView !== "users") setCreatedAccounts([]);
     setView(nextView);
@@ -230,10 +278,14 @@ export default function App() {
 
   const navigation: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
+    { id: "availability", label: "Tìm phòng trống", icon: CalendarSearch },
     { id: "calendar", label: "Lịch phòng", icon: CalendarDays },
     { id: "bookings", label: "Quản lý đặt phòng", icon: Clock3 },
     { id: "rooms", label: "Quản lý phòng", icon: DoorOpen },
-    ...(user.role === "ADMIN" ? [{ id: "users" as const, label: "Tài khoản người dùng", icon: UserPlus }] : [])
+    ...(user.role === "ADMIN" ? [
+      { id: "users" as const, label: "Quản lý tài khoản", icon: UserRoundCog },
+      { id: "reports" as const, label: "Báo cáo sử dụng", icon: ChartNoAxesCombined }
+    ] : [])
   ];
 
   return (
@@ -272,7 +324,7 @@ export default function App() {
           <div className="breadcrumb">Workspace <span>/</span> <strong>{navigation.find((item) => item.id === view)?.label}</strong></div>
           <div className="topbar-actions">
             <span className="today-label">{prettyDate(new Date().toISOString(), { weekday: "long", day: "numeric", month: "long" })}</span>
-            <button className="button button-primary button-small" onClick={() => setShowBooking(true)}><Plus size={16} /> Đặt phòng mới</button>
+            <button className="button button-primary button-small" onClick={() => openBooking()}><Plus size={16} /> Đặt phòng mới</button>
             <button className="avatar avatar-small" title="Đăng xuất" onClick={logout}>{user.name.slice(0, 1).toUpperCase()}</button>
           </div>
         </header>
@@ -280,8 +332,14 @@ export default function App() {
         <div className="page-content">
           {loading ? <div className="loading-state"><span className="spinner" /> Đang tải dữ liệu…</div> : (
             <>
-              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} onCreate={() => setShowBooking(true)} onNavigate={navigate} onCancel={cancel} />}
-              {view === "calendar" && <CalendarView bookings={bookings} week={week} rooms={rooms} onWeekChange={setWeek} onCreate={() => setShowBooking(true)} />}
+              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} onCreate={() => openBooking()} onNavigate={navigate} onCancel={cancel} />}
+              {view === "availability" && <AvailabilityView
+                onSearch={searchAvailableRooms}
+                amenities={Array.from(new Set([...roomAmenityOptions, ...rooms.flatMap((room) => room.amenities)]))}
+                onBook={(room, input) => openBooking({ roomId: room.id, startTime: input.startTime, endTime: input.endTime, attendeeCount: input.attendeeCount })}
+                onError={handleError}
+              />}
+              {view === "calendar" && <CalendarView bookings={bookings} week={week} rooms={rooms} onWeekChange={setWeek} onCreate={() => openBooking()} />}
               {view === "bookings" && (
                 <BookingsView
                   bookings={filteredBookings}
@@ -290,7 +348,7 @@ export default function App() {
                   onSearch={setSearch}
                   onStatus={setStatusFilter}
                   onCancel={cancel}
-                  onCreate={() => setShowBooking(true)}
+                  onCreate={() => openBooking()}
                 />
               )}
               {view === "rooms" && <RoomsView rooms={rooms} canManage={user.role === "ADMIN"} onCreate={() => setShowRoomForm(true)} onEdit={setEditingRoom} onUpdate={async (room) => {
@@ -306,14 +364,19 @@ export default function App() {
                 createdAccounts={createdAccounts}
                 onCreate={createUsers}
                 onClearCredentials={() => setCreatedAccounts([])}
+                token={token}
+                currentUserId={user.id}
+                onUpdateStatus={updateAccountStatus}
+                onResetPassword={resetAccountPassword}
               />}
+              {view === "reports" && user.role === "ADMIN" && <ReportsView token={token} onError={handleError} />}
             </>
           )}
         </div>
       </main>
 
       {notice && <div role="status" className={`toast ${notice.kind}`}><span>{notice.kind === "success" ? <Check size={17} /> : <AlertCircle size={17} />}</span>{notice.text}<button onClick={() => setNotice(null)} aria-label="Đóng"><X size={16} /></button></div>}
-      {showBooking && <BookingModal rooms={rooms} onClose={() => setShowBooking(false)} onSubmit={submitBooking} />}
+      {showBooking && <BookingModal rooms={rooms} initialValues={bookingDefaults} onClose={() => setShowBooking(false)} onSubmit={submitBooking} />}
       {showRoomForm && <RoomModal onClose={() => setShowRoomForm(false)} onSubmit={saveRoom} />}
       {editingRoom && <RoomModal room={editingRoom} onClose={() => setEditingRoom(null)} onSubmit={saveRoom} />}
       {showZaloContact && <Modal title="Liên hệ hỗ trợ qua Zalo" subtitle="Kết bạn để được quản trị viên hỗ trợ." onClose={() => setShowZaloContact(false)}>
@@ -535,27 +598,162 @@ function BookingsView({ bookings, search, statusFilter, onSearch, onStatus, onCa
   );
 }
 
+const roomAmenityOptions = [
+  "Máy chiếu", "Màn hình", "Bảng trắng", "Họp trực tuyến", "Loa và micro", "Cổng HDMI"
+];
+
+function AvailabilityView({ onSearch, amenities, onBook, onError }: {
+  onSearch: (input: AvailableRoomSearch) => Promise<Room[]>;
+  amenities: string[];
+  onBook: (room: Room, input: AvailableRoomSearch) => void;
+  onError: (error: unknown) => void;
+}) {
+  const [results, setResults] = useState<Room[] | null>(null);
+  const [query, setQuery] = useState<AvailableRoomSearch | null>(null);
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const startTime = new Date(String(form.get("startTime"))).toISOString();
+    const endTime = new Date(String(form.get("endTime"))).toISOString();
+    const input = {
+      startTime,
+      endTime,
+      attendeeCount: Number(form.get("attendeeCount")),
+      amenities: selectedAmenities
+    };
+    setBusy(true);
+    try {
+      setQuery(input);
+      setResults(await onSearch(input));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleAmenity(amenity: string) {
+    setSelectedAmenities((current) =>
+      current.includes(amenity) ? current.filter((item) => item !== amenity) : [...current, amenity]
+    );
+  }
+
+  return (
+    <>
+      <PageHeading eyebrow="TÌM KIẾM THÔNG MINH" title="Tìm phòng còn trống" description="Chọn thời gian và tiện nghi cần có để tìm phòng phù hợp." />
+      <section className="panel availability-panel">
+        <form className="availability-form" onSubmit={submit}>
+          <label>Thời gian bắt đầu<input name="startTime" type="datetime-local" required defaultValue={`${today()}T09:00`} /></label>
+          <label>Thời gian kết thúc<input name="endTime" type="datetime-local" required defaultValue={`${today()}T10:00`} /></label>
+          <label>Số người<input name="attendeeCount" type="number" min="1" max="500" required defaultValue="4" /></label>
+          <button className="button button-primary" disabled={busy}>{busy ? "Đang tìm…" : <><Search size={16} /> Tìm phòng</>}</button>
+          <fieldset className="amenity-filter">
+            <legend>Tiện nghi cần có</legend>
+            {amenities.map((amenity) => <label key={amenity}>
+              <input type="checkbox" checked={selectedAmenities.includes(amenity)} onChange={() => toggleAmenity(amenity)} />
+              <span>{amenity}</span>
+            </label>)}
+          </fieldset>
+        </form>
+      </section>
+      {results !== null && <section className="availability-results">
+        <div className="section-title"><h2>{results.length ? `Tìm thấy ${results.length} phòng phù hợp` : "Không có phòng phù hợp"}</h2>
+          {query && <p>{prettyDate(query.startTime, { day: "numeric", month: "long" })} · {clock(query.startTime)}–{clock(query.endTime)} · {query.attendeeCount} người</p>}
+        </div>
+        {results.length ? <div className="rooms-grid">{results.map((room, index) => <article className={`room-card room-art-${index % 3}`} key={room.id}>
+          <div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div>
+          <div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className="room-status active"><i />Còn trống</span></div>
+            <div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span></div>
+            <AmenityBadges amenities={room.amenities} />
+            <button className="button button-primary button-wide" onClick={() => query && onBook(room, query)}><Plus size={16} /> Đặt phòng này</button>
+          </div>
+        </article>)}</div> : <div className="panel"><EmptyState title="Chưa tìm thấy phòng phù hợp" text="Thử giảm số người hoặc bỏ bớt tiện nghi cần có." /></div>}
+      </section>}
+    </>
+  );
+}
+
+function AmenityBadges({ amenities }: { amenities: string[] }) {
+  if (!amenities.length) return <p className="amenity-empty">Chưa khai báo tiện nghi.</p>;
+  return <div className="amenity-badges">{amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div>;
+}
+
 function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
   rooms: Room[]; canManage: boolean; onCreate: () => void; onEdit: (room: Room) => void; onUpdate: (room: Room) => void;
 }) {
   return (
     <>
       <PageHeading eyebrow="KHÔNG GIAN LÀM VIỆC" title="Danh sách phòng" description="Tìm phòng phù hợp cho cuộc họp tiếp theo." action={canManage ? <button className="button button-primary" onClick={onCreate}><Plus size={17} /> Thêm phòng</button> : undefined} />
-      <div className="rooms-grid">{rooms.map((room, index) => <article key={room.id} className={`room-card room-art-${index % 3}`}><div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div><div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className={`room-status ${room.status === "ACTIVE" ? "active" : "inactive"}`}><i />{room.status === "ACTIVE" ? "Sẵn sàng" : "Tạm ngưng"}</span></div><div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span><span><CalendarDays size={16} /> Đặt theo giờ</span></div><div className="room-card-foot"><span>Phòng họp · {room.location}</span>{canManage && <div className="room-admin-actions"><button className="table-action" onClick={() => onEdit(room)}>Chỉnh sửa</button><button className="table-action" onClick={() => onUpdate(room)}>{room.status === "ACTIVE" ? "Ngừng sử dụng" : "Kích hoạt"}</button></div>}</div></div></article>)}</div>
+      <div className="rooms-grid">{rooms.map((room, index) => <article key={room.id} className={`room-card room-art-${index % 3}`}><div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div><div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className={`room-status ${room.status === "ACTIVE" ? "active" : "inactive"}`}><i />{room.status === "ACTIVE" ? "Sẵn sàng" : "Tạm ngưng"}</span></div><div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span><span><CalendarDays size={16} /> Đặt theo giờ</span></div><AmenityBadges amenities={room.amenities} /><div className="room-card-foot"><span>Phòng họp · {room.location}</span>{canManage && <div className="room-admin-actions"><button className="table-action" onClick={() => onEdit(room)}>Chỉnh sửa</button><button className="table-action" onClick={() => onUpdate(room)}>{room.status === "ACTIVE" ? "Ngừng sử dụng" : "Kích hoạt"}</button></div>}</div></div></article>)}</div>
       {!rooms.length && <div className="panel"><EmptyState title="Chưa có phòng nào" text="Thêm phòng họp đầu tiên vào hệ thống." action={<button className="button button-primary button-small" onClick={onCreate}><Plus size={15} /> Thêm phòng</button>} /></div>}
     </>
   );
 }
 
-function UsersView({ createdAccounts, onCreate, onClearCredentials }: {
+function UsersView({ createdAccounts, onCreate, onClearCredentials, token, currentUserId, onUpdateStatus, onResetPassword }: {
   createdAccounts: CreatedAccount[];
   onCreate: (users: { name: string; email: string }[]) => Promise<boolean>;
   onClearCredentials: () => void;
+  token: string;
+  currentUserId: string;
+  onUpdateStatus: (account: AccountRecord, isActive: boolean) => Promise<boolean>;
+  onResetPassword: (account: AccountRecord) => Promise<{ temporaryPassword: string } | null>;
 }) {
+  const [tab, setTab] = useState<"accounts" | "create">("accounts");
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [resetResult, setResetResult] = useState<{ name: string; email: string; password: string } | null>(null);
+
+  useEffect(() => {
+    if (tab !== "accounts") return;
+    let cancelled = false;
+    setAccountBusy(true);
+    setAccountError("");
+    const params = new URLSearchParams();
+    if (accountSearch.trim()) params.set("search", accountSearch.trim());
+    api<{ users: AccountRecord[] }>(`/api/users?${params.toString()}`, {}, token)
+      .then((result) => { if (!cancelled) setAccounts(result.users); })
+      .catch((requestError: unknown) => {
+        if (!cancelled) setAccountError(requestError instanceof Error ? requestError.message : "Không thể tải tài khoản.");
+      })
+      .finally(() => { if (!cancelled) setAccountBusy(false); });
+    return () => { cancelled = true; };
+  }, [accountSearch, tab, token]);
+
+  async function toggleAccount(account: AccountRecord) {
+    const action = account.isActive ? "khóa" : "mở khóa";
+    if (!window.confirm(`Bạn có chắc muốn ${action} tài khoản ${account.email}?`)) return;
+    if (await onUpdateStatus(account, !account.isActive)) {
+      setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, isActive: !item.isActive } : item));
+    }
+  }
+
+  async function resetPassword(account: AccountRecord) {
+    if (!window.confirm(`Đặt lại mật khẩu cho ${account.email}? Người dùng sẽ phải đổi mật khẩu sau lần đăng nhập tiếp theo.`)) return;
+    const result = await onResetPassword(account);
+    if (result) {
+      setResetResult({ name: account.name, email: account.email, password: result.temporaryPassword });
+      setAccounts((current) => current.map((item) => item.id === account.id ? { ...item, mustChangePassword: true } : item));
+    }
+  }
+
+  async function copyResetPassword() {
+    if (!resetResult) return;
+    try {
+      await navigator.clipboard.writeText(resetResult.password);
+    } catch {
+      setAccountError("Không thể sao chép tự động. Hãy chọn mật khẩu đang hiển thị để sao chép.");
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -618,8 +816,44 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials }: {
       <PageHeading
         eyebrow="QUẢN TRỊ HỆ THỐNG"
         title="Tài khoản người dùng"
-        description="Tạo hàng loạt tài khoản thành viên. Chỉ quản trị viên mới có quyền sử dụng."
+        description="Tìm, khóa/mở tài khoản, đặt lại mật khẩu hoặc tạo thành viên mới."
       />
+      <div className="admin-tabs" role="tablist" aria-label="Quản lý tài khoản">
+        <button role="tab" aria-selected={tab === "accounts"} className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}><Users size={16} /> Danh sách tài khoản</button>
+        <button role="tab" aria-selected={tab === "create"} className={tab === "create" ? "active" : ""} onClick={() => setTab("create")}><UserPlus size={16} /> Thêm hàng loạt</button>
+      </div>
+      {tab === "accounts" && <>
+        <section className="panel table-panel admin-accounts">
+          <div className="table-toolbar">
+            <div className="search-field"><Search size={17} /><input aria-label="Tìm tên hoặc email" placeholder="Tìm theo tên hoặc email..." value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} /></div>
+            <span className="account-count">{accounts.length} tài khoản</span>
+          </div>
+          {accountError && <p className="form-error account-error" role="alert">{accountError}</p>}
+          {accountBusy ? <div className="loading-state"><span className="spinner" /> Đang tải tài khoản…</div> :
+            <div className="table-wrap"><table><thead><tr><th>TÀI KHOẢN</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>MẬT KHẨU</th><th>THAO TÁC</th></tr></thead><tbody>
+              {accounts.map((account) => <tr key={account.id}>
+                <td><strong>{account.name}</strong><small>{account.email}</small></td>
+                <td>{account.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</td>
+                <td><span className={`status-pill ${account.isActive ? "confirmed" : "cancelled"}`}>{account.isActive ? "Đang hoạt động" : "Đã khóa"}</span></td>
+                <td>{account.mustChangePassword ? <span className="password-change-required">Cần đổi</span> : "Đã thiết lập"}</td>
+                <td><div className="account-actions">
+                  <button className="table-action" onClick={() => void resetPassword(account)}><RotateCcw size={14} /> Đặt lại</button>
+                  <button className="table-action" disabled={account.id === currentUserId} onClick={() => void toggleAccount(account)}>
+                    {account.isActive ? <><Ban size={14} /> Khóa</> : <><CheckCircle2 size={14} /> Mở khóa</>}
+                  </button>
+                </div></td>
+              </tr>)}
+            </tbody></table></div>}
+          {!accountBusy && accounts.length === 0 && <EmptyState title="Không tìm thấy tài khoản" text="Thử tìm bằng tên hoặc email khác." />}
+        </section>
+        {resetResult && <section className="panel reset-password-result">
+          <div><strong>Đã đặt lại mật khẩu cho {resetResult.name}</strong><p>{resetResult.email} · Mật khẩu chỉ hiển thị lần này; người dùng phải đổi sau khi đăng nhập.</p></div>
+          <code>{resetResult.password}</code>
+          <button className="button button-outline button-small" onClick={() => void copyResetPassword()}><Copy size={14} /> Sao chép</button>
+          <button className="icon-button" aria-label="Ẩn mật khẩu" onClick={() => setResetResult(null)}><X size={16} /></button>
+        </section>}
+      </>}
+      {tab === "create" && <>
       <div className="users-admin-grid">
         <section className="panel users-import-panel">
           <div className="panel-heading">
@@ -670,16 +904,93 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials }: {
           {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
         </section>
       )}
+      </>}
     </>
   );
+}
+
+type RoomReport = {
+  range: { from: string; to: string };
+  summary: {
+    activeRoomCount: number;
+    totalBookings: number;
+    totalCancelled: number;
+    bookedHours: number;
+    utilizationPercent: number;
+  };
+  rooms: {
+    room: Pick<Room, "id" | "name" | "location" | "status">;
+    bookingCount: number;
+    cancelledCount: number;
+    bookedHours: number;
+    utilizationPercent: number;
+  }[];
+};
+
+function ReportsView({ token, onError }: { token: string; onError: (error: unknown) => void }) {
+  const now = new Date();
+  const [from, setFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd"));
+  const [to, setTo] = useState(today());
+  const [report, setReport] = useState<RoomReport | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function loadReport(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (!from || !to || to < from) {
+      onError(new Error("Ngày kết thúc phải bằng hoặc sau ngày bắt đầu."));
+      return;
+    }
+    const rangeStart = new Date(`${from}T00:00:00`);
+    const rangeEnd = addDays(new Date(`${to}T00:00:00`), 1);
+    const query = new URLSearchParams({ from: rangeStart.toISOString(), to: rangeEnd.toISOString() });
+    setBusy(true);
+    try {
+      setReport(await api<RoomReport>(`/api/reports/rooms?${query.toString()}`, {}, token));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { void loadReport(); }, []);
+
+  return <>
+    <PageHeading eyebrow="PHÂN TÍCH VẬN HÀNH" title="Báo cáo sử dụng phòng" description="Theo dõi số lượt đặt, giờ sử dụng và tỷ lệ khai thác theo phòng." />
+    <form className="panel report-filters" onSubmit={(event) => void loadReport(event)}>
+      <label>Từ ngày<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} required /></label>
+      <label>Đến ngày<input type="date" value={to} onChange={(event) => setTo(event.target.value)} required /></label>
+      <button className="button button-primary" disabled={busy}>{busy ? "Đang tải…" : <><Search size={16} /> Xem báo cáo</>}</button>
+    </form>
+    {report && <>
+      <section className="stats-grid report-stats">
+        <StatCard icon={<DoorOpen size={19} />} label="Phòng đang hoạt động" value={String(report.summary.activeRoomCount)} sub="được tính trong công suất" tone="lavender" />
+        <StatCard icon={<CalendarDays size={19} />} label="Lượt đặt đã xác nhận" value={String(report.summary.totalBookings)} sub="trong khoảng thời gian" tone="peach" />
+        <StatCard icon={<Clock3 size={19} />} label="Tổng giờ sử dụng" value={`${report.summary.bookedHours} giờ`} sub={`${report.summary.totalCancelled} lượt đã hủy`} tone="mint" />
+        <StatCard icon={<ChartNoAxesCombined size={19} />} label="Tỷ lệ sử dụng" value={`${report.summary.utilizationPercent}%`} sub="trên tổng giờ phòng hoạt động" tone="sky" />
+      </section>
+      <section className="panel table-panel report-table">
+        <div className="panel-heading"><div><h2>Chi tiết theo phòng</h2><p>Tỷ lệ sử dụng = giờ đặt đã xác nhận / tổng giờ lịch phòng đang hoạt động.</p></div></div>
+        <div className="table-wrap"><table><thead><tr><th>PHÒNG</th><th>TRẠNG THÁI</th><th>LƯỢT ĐẶT</th><th>GIỜ SỬ DỤNG</th><th>ĐÃ HỦY</th><th>TỶ LỆ SỬ DỤNG</th></tr></thead><tbody>
+          {report.rooms.map((item) => <tr key={item.room.id}>
+            <td><strong>{item.room.name}</strong><small>{item.room.location}</small></td>
+            <td>{item.room.status === "ACTIVE" ? "Hoạt động" : "Tạm ngưng"}</td>
+            <td>{item.bookingCount}</td><td>{item.bookedHours} giờ</td><td>{item.cancelledCount}</td><td><strong>{item.utilizationPercent}%</strong></td>
+          </tr>)}
+        </tbody></table></div>
+        {!report.rooms.length && <EmptyState title="Chưa có phòng để thống kê" text="Thêm phòng để xem báo cáo sử dụng." />}
+      </section>
+    </>}
+  </>;
 }
 
 function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
   return <div className="empty-state"><span className="empty-icon"><CalendarDays size={21} /></span><strong>{title}</strong><p>{text}</p>{action}</div>;
 }
 
-function BookingModal({ rooms, onClose, onSubmit }: {
-  rooms: Room[]; onClose: () => void; onSubmit: (input: BookingInput, recurrence: number) => void;
+function BookingModal({ rooms, initialValues, onClose, onSubmit }: {
+  rooms: Room[]; initialValues?: Partial<BookingInput>; onClose: () => void;
+  onSubmit: (input: BookingInput, recurrence: number) => void;
 }) {
   const activeRooms = rooms.filter((room) => room.status === "ACTIVE");
   const [recurrence, setRecurrence] = useState("1");
@@ -698,11 +1009,14 @@ function BookingModal({ rooms, onClose, onSubmit }: {
     }, Number(recurrence));
     setBusy(false);
   }
+  const initialDate = initialValues?.startTime ? format(new Date(initialValues.startTime), "yyyy-MM-dd") : today();
+  const initialStart = initialValues?.startTime ? format(new Date(initialValues.startTime), "HH:mm") : "09:00";
+  const initialEnd = initialValues?.endTime ? format(new Date(initialValues.endTime), "HH:mm") : "10:00";
   return <Modal title="Đặt phòng họp" subtitle="Điền thông tin để giữ chỗ cho cuộc họp." onClose={onClose}><form className="form-stack" onSubmit={submit}>
-    <label>Phòng họp<select name="roomId" required defaultValue=""><option value="" disabled>Chọn phòng</option>{activeRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.location} · {room.capacity} chỗ</option>)}</select></label>
-    <label>Ngày họp<input name="date" type="date" required min={today()} defaultValue={today()} /></label>
-    <div className="form-row"><label>Giờ bắt đầu<input name="start" type="time" required defaultValue="09:00" /></label><label>Giờ kết thúc<input name="end" type="time" required defaultValue="10:00" /></label></div>
-    <div className="form-row"><label>Số người tham dự<input name="attendeeCount" type="number" required min="1" max="500" defaultValue="4" /></label><label>Hình thức đặt<select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option value="1">Một lần</option><option value="2">2 buổi hàng tuần</option><option value="3">3 buổi hàng tuần</option><option value="4">4 buổi hàng tuần</option><option value="5">5 buổi hàng tuần</option><option value="6">6 buổi hàng tuần</option><option value="7">7 buổi hàng tuần</option><option value="8">8 buổi hàng tuần</option></select></label></div>
+    <label>Phòng họp<select name="roomId" required defaultValue={initialValues?.roomId ?? ""}><option value="" disabled>Chọn phòng</option>{activeRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.location} · {room.capacity} chỗ</option>)}</select></label>
+    <label>Ngày họp<input name="date" type="date" required min={today()} defaultValue={initialDate} /></label>
+    <div className="form-row"><label>Giờ bắt đầu<input name="start" type="time" required defaultValue={initialStart} /></label><label>Giờ kết thúc<input name="end" type="time" required defaultValue={initialEnd} /></label></div>
+    <div className="form-row"><label>Số người tham dự<input name="attendeeCount" type="number" required min="1" max="500" defaultValue={initialValues?.attendeeCount ?? 4} /></label><label>Hình thức đặt<select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option value="1">Một lần</option><option value="2">2 buổi hàng tuần</option><option value="3">3 buổi hàng tuần</option><option value="4">4 buổi hàng tuần</option><option value="5">5 buổi hàng tuần</option><option value="6">6 buổi hàng tuần</option><option value="7">7 buổi hàng tuần</option><option value="8">8 buổi hàng tuần</option></select></label></div>
     <p className="form-hint"><Clock3 size={14} /> Tối đa 4 giờ/ngày cho mỗi người. Thời gian theo múi giờ thiết bị.</p>
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy || activeRooms.length === 0}>{busy ? "Đang lưu…" : "Xác nhận đặt phòng"} <ArrowRight size={16} /></button></div>
   </form></Modal>;
@@ -720,6 +1034,7 @@ function RoomModal({ room, onClose, onSubmit }: {
       name: String(form.get("name")),
       location: String(form.get("location")),
       capacity: Number(form.get("capacity")),
+      amenities: String(form.get("amenities") ?? "").split(",").map((amenity) => amenity.trim()).filter(Boolean),
       status: room?.status ?? "ACTIVE"
     }, room?.id);
     setBusy(false);
@@ -728,6 +1043,7 @@ function RoomModal({ room, onClose, onSubmit }: {
     <label>Tên phòng<input name="name" required minLength={2} maxLength={80} placeholder="Ví dụ: Orchid" defaultValue={room?.name} /></label>
     <label>Vị trí<input name="location" required maxLength={120} placeholder="Ví dụ: Tầng 2" defaultValue={room?.location} /></label>
     <label>Sức chứa<input name="capacity" type="number" required min="1" max="500" placeholder="Số người tối đa" defaultValue={room?.capacity} /></label>
+    <label>Tiện nghi<input name="amenities" placeholder="Máy chiếu, Màn hình, Bảng trắng" defaultValue={room?.amenities.join(", ")} /><span className="form-hint">Phân cách từng tiện nghi bằng dấu phẩy.</span></label>
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? "Đang lưu…" : room ? "Lưu thay đổi" : "Thêm phòng"} <ArrowRight size={16} /></button></div>
   </form></Modal>;
 }

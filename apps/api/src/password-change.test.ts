@@ -23,7 +23,8 @@ const user = {
   name: "Bulk User",
   email: "bulk-user@example.com",
   role: "USER" as const,
-  mustChangePassword: true
+  mustChangePassword: true,
+  isActive: true
 };
 
 describe("initial password flow", () => {
@@ -33,6 +34,13 @@ describe("initial password flow", () => {
 
   it("creates bulk accounts with the default password and forces a change", async () => {
     prismaMock.user.findMany.mockResolvedValue([]);
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "admin",
+      email: "admin@example.com",
+      role: "ADMIN",
+      mustChangePassword: false,
+      isActive: true
+    });
     prismaMock.$transaction.mockImplementation(async (callback) => callback({
       user: {
         findUnique: vi.fn().mockResolvedValue({ role: "ADMIN" }),

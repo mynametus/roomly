@@ -1,9 +1,23 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const prismaMock = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() }
+}));
+
+vi.mock("./lib/prisma.js", () => ({ prisma: prismaMock }));
+
 import app from "./application.js";
 import { createToken } from "./middleware/auth.js";
 
 process.env.JWT_SECRET ??= "roomly-test-jwt-secret-that-is-long-enough";
+prismaMock.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+  id: where.id,
+  email: `${where.id}@example.com`,
+  role: where.id === "admin-user" ? "ADMIN" : "USER",
+  mustChangePassword: where.id === "new-user",
+  isActive: true
+}));
 
 describe("Roomly API", () => {
   it("exposes a health endpoint without authentication", async () => {

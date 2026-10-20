@@ -33,7 +33,9 @@ Mở `http://localhost:5173`. Đăng nhập bằng email và mật khẩu quản
 - Một lượt đặt không dài quá 4 giờ và một người không đặt tổng cộng quá 4 giờ trong một ngày, tính trên tất cả phòng. Múi giờ ngày nghiệp vụ cấu hình bằng `BUSINESS_TIME_ZONE` (mặc định `Asia/Ho_Chi_Minh`).
 - Đặt định kỳ gồm 2–8 buổi hàng tuần. Toàn bộ buổi được kiểm tra và ghi trong một transaction; chỉ cần một buổi không hợp lệ, cả yêu cầu bị từ chối.
 - Hủy một buổi giữ lại lịch sử. Với lịch định kỳ, người dùng có thể chọn hủy riêng buổi hiện tại hoặc hủy buổi đó và tất cả buổi tiếp theo.
-- Quản trị viên có thể thêm, chỉnh sửa, tạm ngưng/kích hoạt phòng; xem/hủy lịch của mọi người; và tạo tối đa 50 tài khoản thành viên mỗi lượt. Tài khoản do admin tạo dùng mật khẩu ban đầu `12345678` và bắt buộc đổi mật khẩu sau lần đăng nhập đầu tiên. Người dùng thường chỉ xem và hủy lịch của mình.
+- Người dùng có thể tìm phòng còn trống theo thời gian, sức chứa và tiện nghi. Lịch đặt vẫn được kiểm tra lại khi xác nhận để tránh đặt trùng.
+- Quản trị viên có thể thêm/chỉnh sửa phòng và tiện nghi, tạm ngưng/kích hoạt phòng, xem/hủy lịch của mọi người, tạo tối đa 50 tài khoản mỗi lượt, tìm/khóa/mở tài khoản, đặt lại mật khẩu và xem báo cáo sử dụng phòng.
+- Tài khoản do admin tạo dùng mật khẩu ban đầu `12345678`; tài khoản được đặt lại dùng mật khẩu ngẫu nhiên chỉ hiển thị một lần. Cả hai trường hợp đều bắt buộc đổi mật khẩu sau khi đăng nhập. Tài khoản bị khóa sẽ mất quyền truy cập ngay cả khi phiên đăng nhập cũ còn hiệu lực.
 
 ## Kiểm thử và build
 

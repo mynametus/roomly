@@ -1,11 +1,66 @@
+import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAdmin, type AuthenticatedRequest } from "../middleware/auth.js";
-import { bulkUsersSchema } from "../lib/validation.js";
+import { bulkUsersSchema, userStatusSchema } from "../lib/validation.js";
 
 export const usersRouter = Router();
+
+usersRouter.get("/", requireAdmin, async (request, response) => {
+  const query = typeof request.query.search === "string" ? request.query.search.trim() : "";
+  const users = await prisma.user.findMany({
+    where: query ? {
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { email: { contains: query, mode: "insensitive" } }
+      ]
+    } : undefined,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      mustChangePassword: true,
+      isActive: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  response.json({ users });
+});
+
+usersRouter.patch("/:id/status", requireAdmin, async (request, response) => {
+  const { isActive } = userStatusSchema.parse(request.body);
+  const userId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
+  if (!userId) throw new AppError("Thiếu mã tài khoản.");
+  const admin = (request as AuthenticatedRequest).user!;
+  if (!isActive && userId === admin.id) {
+    throw new AppError("Bạn không thể tự khóa tài khoản đang sử dụng.");
+  }
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { isActive },
+    select: { id: true, name: true, email: true, role: true, isActive: true }
+  });
+  response.json({ user });
+});
+
+usersRouter.post("/:id/reset-password", requireAdmin, async (request, response) => {
+  const userId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
+  if (!userId) throw new AppError("Thiếu mã tài khoản.");
+  const temporaryPassword = randomBytes(18).toString("base64url");
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash: await bcrypt.hash(temporaryPassword, 12),
+      mustChangePassword: true
+    },
+    select: { id: true, name: true, email: true }
+  });
+  response.json({ user, temporaryPassword });
+});
 
 usersRouter.post("/bulk", requireAdmin, async (request, response) => {
   const { users } = bulkUsersSchema.parse(request.body);

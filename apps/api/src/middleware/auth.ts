@@ -1,9 +1,16 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { AppError } from "../lib/errors.js";
+import { prisma } from "../lib/prisma.js";
 
 export interface AuthenticatedRequest extends Request {
-  user?: { id: string; email: string; role: "USER" | "ADMIN"; mustChangePassword?: boolean };
+  user?: {
+    id: string;
+    email: string;
+    role: "USER" | "ADMIN";
+    mustChangePassword?: boolean;
+    isActive?: boolean;
+  };
 }
 
 function jwtSecret(): string {
@@ -23,11 +30,11 @@ export function createToken(user: {
   return jwt.sign(user, jwtSecret(), { expiresIn: "12h" });
 }
 
-export function requireAuth(
+export async function requireAuth(
   request: AuthenticatedRequest,
   _response: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const authorization = request.header("authorization");
   if (!authorization?.startsWith("Bearer ")) {
     next(new AppError("Vui lòng đăng nhập để tiếp tục.", 401));
@@ -42,12 +49,28 @@ export function requireAuth(
     return;
   }
 
+  let payload: jwt.JwtPayload;
   try {
-    request.user = jwt.verify(authorization.slice(7), secret) as AuthenticatedRequest["user"];
-    next();
+    const verified = jwt.verify(authorization.slice(7), secret);
+    if (typeof verified === "string" || typeof verified.id !== "string") {
+      throw new Error("Invalid token payload");
+    }
+    payload = verified;
   } catch {
     next(new AppError("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.", 401));
+    return;
   }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.id },
+    select: { id: true, email: true, role: true, mustChangePassword: true, isActive: true }
+  });
+  if (!user || !user.isActive) {
+    next(new AppError("Tài khoản đã bị khóa hoặc không còn tồn tại.", 401));
+    return;
+  }
+  request.user = user;
+  next();
 }
 
 export function requireAdmin(

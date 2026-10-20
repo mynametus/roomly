@@ -1,10 +1,32 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../lib/errors.js";
-import { roomSchema } from "../lib/validation.js";
+import { availabilitySchema, roomSchema } from "../lib/validation.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { validateBookingTime } from "../services/booking-rules.js";
 
 export const roomsRouter = Router();
+
+roomsRouter.get("/available", async (request, response) => {
+  const { startTime, endTime, attendeeCount, amenities } = availabilitySchema.parse(request.query);
+  validateBookingTime({ startTime, endTime });
+  const rooms = await prisma.room.findMany({
+    where: {
+      status: "ACTIVE",
+      capacity: { gte: attendeeCount },
+      ...(amenities.length ? { amenities: { hasEvery: amenities } } : {}),
+      bookings: {
+        none: {
+          status: "CONFIRMED",
+          startTime: { lt: endTime },
+          endTime: { gt: startTime }
+        }
+      }
+    },
+    orderBy: { name: "asc" }
+  });
+  response.json({ rooms });
+});
 
 roomsRouter.get("/", async (_request, response) => {
   const rooms = await prisma.room.findMany({ orderBy: { name: "asc" } });
