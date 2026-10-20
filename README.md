@@ -51,6 +51,7 @@ Tạo hai Vercel Project cùng liên kết repository:
 - Root Directory: `apps/web`
 - Framework: Vite; Output Directory: `dist`
 - Environment Variable: `VITE_API_URL=https://<api-domain>`
+- Roomly Production: https://roomly-web-seven.vercel.app
 
 ### API
 
@@ -59,5 +60,8 @@ Tạo hai Vercel Project cùng liên kết repository:
 - Environment Variables: `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL=https://<web-domain>`, `BUSINESS_TIME_ZONE=Asia/Ho_Chi_Minh`.
 - Backend được Vercel nhận diện là Express app và chạy thành một Node.js Function; endpoint đặt dưới `/api/*`.
 - Sau khi thiết lập database, chạy migration production `npm run db:deploy -w @roomly/api` và seed dữ liệu ban đầu `npm run db:seed -w @roomly/api` từ môi trường có cấu hình biến môi trường.
+- Roomly API Production: https://roomly-api.vercel.app
 
 `DATABASE_URL` chỉ được cấu hình ở backend, tuyệt đối không thêm tiền tố `VITE_`. Cập nhật `FRONTEND_URL` và `VITE_API_URL` theo domain thực tế của từng deployment.
+
+Tài khoản quản trị được tạo bởi lệnh seed. Mật khẩu quản trị production hiện được lưu cục bộ trong `apps/api/.env` ở biến `ADMIN_PASSWORD`; không commit hoặc chia sẻ file này.
