@@ -1,0 +1,58 @@
+import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { AppError } from "../lib/errors.js";
+
+export interface AuthenticatedRequest extends Request {
+  user?: { id: string; email: string; role: "USER" | "ADMIN" };
+}
+
+function jwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new AppError("Máy chủ chưa cấu hình JWT_SECRET đủ an toàn.", 500);
+  }
+  return secret;
+}
+
+export function createToken(user: { id: string; email: string; role: "USER" | "ADMIN" }): string {
+  return jwt.sign(user, jwtSecret(), { expiresIn: "12h" });
+}
+
+export function requireAuth(
+  request: AuthenticatedRequest,
+  _response: Response,
+  next: NextFunction
+): void {
+  const authorization = request.header("authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    next(new AppError("Vui lòng đăng nhập để tiếp tục.", 401));
+    return;
+  }
+
+  let secret: string;
+  try {
+    secret = jwtSecret();
+  } catch (error) {
+    next(error);
+    return;
+  }
+
+  try {
+    request.user = jwt.verify(authorization.slice(7), secret) as AuthenticatedRequest["user"];
+    next();
+  } catch {
+    next(new AppError("Phiên đăng nhập không hợp lệ hoặc đã hết hạn.", 401));
+  }
+}
+
+export function requireAdmin(
+  request: AuthenticatedRequest,
+  _response: Response,
+  next: NextFunction
+): void {
+  if (request.user?.role !== "ADMIN") {
+    next(new AppError("Bạn không có quyền thực hiện thao tác này.", 403));
+    return;
+  }
+  next();
+}

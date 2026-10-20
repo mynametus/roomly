@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum RoomStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  passwordHash String
+  role         UserRole       @default(USER)
+  bookings     Booking[]
+  series       BookingSeries[]
+  createdAt    DateTime       @default(now())
+}
+
+model Room {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  capacity  Int
+  location  String
+  status    RoomStatus @default(ACTIVE)
+  bookings  Booking[]
+  createdAt DateTime  @default(now())
+}
+
+model BookingSeries {
+  id              String    @id @default(cuid())
+  userId          String
+  recurrenceCount Int
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bookings        Booking[]
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  seriesId       String?
+  userId         String
+  roomId         String
+  startTime      DateTime
+  endTime        DateTime
+  attendeeCount  Int
+  status         BookingStatus @default(CONFIRMED)
+  createdAt      DateTime      @default(now())
+  canceledAt     DateTime?
+  series         BookingSeries? @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  room           Room          @relation(fields: [roomId], references: [id], onDelete: Restrict)
+
+  @@index([roomId, startTime, endTime])
+  @@index([userId, startTime, status])
+  @@index([seriesId, startTime])
+}
