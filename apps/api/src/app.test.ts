@@ -49,6 +49,20 @@ describe("Roomly API", () => {
     expect(response.status).toBe(403);
   });
 
+  it("blocks users with the default password from protected resources", async () => {
+    const token = createToken({
+      id: "new-user",
+      email: "new-user@example.com",
+      role: "USER",
+      mustChangePassword: true
+    });
+    const response = await request(app)
+      .get("/api/rooms")
+      .set("authorization", `Bearer ${token}`);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toContain("đổi mật khẩu");
+  });
+
   it("protects bulk user creation from unauthenticated requests", async () => {
     const response = await request(app).post("/api/users/bulk").send({ users: [] });
     expect(response.status).toBe(401);

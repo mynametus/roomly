@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { AppError } from "../lib/errors.js";
@@ -22,15 +21,10 @@ usersRouter.post("/bulk", requireAdmin, async (request, response) => {
     );
   }
 
-  const credentials = await Promise.all(users.map(async (user) => {
-    const temporaryPassword = randomBytes(24).toString("base64url");
-    return {
-      name: user.name,
-      email: user.email,
-      passwordHash: await bcrypt.hash(temporaryPassword, 10),
-      temporaryPassword
-    };
-  }));
+  const accounts = await Promise.all(users.map(async (user) => ({
+    ...user,
+    passwordHash: await bcrypt.hash("12345678", 12)
+  })));
   const adminId = (request as AuthenticatedRequest).user!.id;
 
   await prisma.$transaction(async (transaction) => {
@@ -42,20 +36,20 @@ usersRouter.post("/bulk", requireAdmin, async (request, response) => {
       throw new AppError("Tài khoản không còn quyền quản trị.", 403);
     }
     await transaction.user.createMany({
-      data: credentials.map(({ name, email, passwordHash }) => ({
+      data: accounts.map(({ name, email, passwordHash }) => ({
         name,
         email,
         passwordHash,
-        role: "USER" as const
+        role: "USER" as const,
+        mustChangePassword: true
       }))
     });
   });
 
   response.status(201).json({
-    created: credentials.map(({ name, email, temporaryPassword }) => ({
+    created: users.map(({ name, email }) => ({
       name,
-      email,
-      temporaryPassword
+      email
     }))
   });
 });

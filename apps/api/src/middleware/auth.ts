@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { AppError } from "../lib/errors.js";
 
 export interface AuthenticatedRequest extends Request {
-  user?: { id: string; email: string; role: "USER" | "ADMIN" };
+  user?: { id: string; email: string; role: "USER" | "ADMIN"; mustChangePassword?: boolean };
 }
 
 function jwtSecret(): string {
@@ -14,7 +14,12 @@ function jwtSecret(): string {
   return secret;
 }
 
-export function createToken(user: { id: string; email: string; role: "USER" | "ADMIN" }): string {
+export function createToken(user: {
+  id: string;
+  email: string;
+  role: "USER" | "ADMIN";
+  mustChangePassword?: boolean;
+}): string {
   return jwt.sign(user, jwtSecret(), { expiresIn: "12h" });
 }
 
@@ -52,6 +57,18 @@ export function requireAdmin(
 ): void {
   if (request.user?.role !== "ADMIN") {
     next(new AppError("Bạn không có quyền thực hiện thao tác này.", 403));
+    return;
+  }
+  next();
+}
+
+export function requirePasswordChanged(
+  request: AuthenticatedRequest,
+  _response: Response,
+  next: NextFunction
+): void {
+  if (request.user?.mustChangePassword) {
+    next(new AppError("Bạn cần đổi mật khẩu trước khi tiếp tục.", 403));
     return;
   }
   next();

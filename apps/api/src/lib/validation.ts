@@ -11,6 +11,11 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(100)
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(100),
+  newPassword: z.string().min(8).max(100)
+});
+
 export const bookingSchema = z.object({
   roomId: z.string().min(1),
   startTime: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),

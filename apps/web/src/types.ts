@@ -3,6 +3,7 @@ export type User = {
   name: string;
   email: string;
   role: "USER" | "ADMIN";
+  mustChangePassword: boolean;
 };
 
 export type Room = {

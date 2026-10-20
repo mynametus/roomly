@@ -24,7 +24,7 @@ import { bookingsRouter } from "./routes/bookings.js";
 import { bookingSeriesRouter } from "./routes/booking-series.js";
 import { roomsRouter } from "./routes/rooms.js";
 import { usersRouter } from "./routes/users.js";
-import { requireAuth } from "./middleware/auth.js";
+import { requireAuth, requirePasswordChanged } from "./middleware/auth.js";
 
 export const app = express();
 
@@ -52,10 +52,10 @@ app.use(express.json({ limit: "32kb" }));
 
 app.get("/api/health", (_request, response) => response.json({ status: "ok" }));
 app.use("/api/auth", authRouter);
-app.use("/api/rooms", requireAuth, roomsRouter);
-app.use("/api/users", requireAuth, usersRouter);
-app.use("/api/bookings", requireAuth, bookingsRouter);
-app.use("/api/booking-series", requireAuth, bookingSeriesRouter);
+app.use("/api/rooms", requireAuth, requirePasswordChanged, roomsRouter);
+app.use("/api/users", requireAuth, requirePasswordChanged, usersRouter);
+app.use("/api/bookings", requireAuth, requirePasswordChanged, bookingsRouter);
+app.use("/api/booking-series", requireAuth, requirePasswordChanged, bookingSeriesRouter);
 app.use((_request, _response, next) => next(new AppError("Không tìm thấy API.", 404)));
 
 const errorHandler: ErrorRequestHandler = (error: unknown, _request, response, _next) => {

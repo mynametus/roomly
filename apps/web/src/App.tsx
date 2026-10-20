@@ -1,5 +1,5 @@
 import {
-  AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp,
+  AlertCircle, ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp, MessageCircle,
   Clock3, Copy, DoorOpen, LayoutDashboard, LogOut, Plus, Search, Settings2, ShieldCheck, Users, UserPlus, X
 } from "lucide-react";
 import {
@@ -13,7 +13,7 @@ import type { Booking, BookingInput, Room, User } from "./types";
 type AuthResponse = { user: User; token: string };
 type View = "overview" | "calendar" | "bookings" | "rooms" | "users";
 type Notice = { kind: "success" | "error"; text: string };
-type CreatedCredential = { name: string; email: string; temporaryPassword: string };
+type CreatedAccount = { name: string; email: string };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const prettyDate = (date: string, options?: Intl.DateTimeFormatOptions) =>
@@ -31,8 +31,9 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [showBooking, setShowBooking] = useState(false);
   const [showRoomForm, setShowRoomForm] = useState(false);
+  const [showZaloContact, setShowZaloContact] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-  const [createdCredentials, setCreatedCredentials] = useState<CreatedCredential[]>([]);
+  const [createdAccounts, setCreatedAccounts] = useState<CreatedAccount[]>([]);
   const [week, setWeek] = useState(new Date());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -50,12 +51,17 @@ export default function App() {
     if (!token) return;
     setLoading(true);
     try {
-      const [me, roomData, bookingData] = await Promise.all([
-        api<{ user: User }>("/api/auth/me", {}, token),
+      const me = await api<{ user: User }>("/api/auth/me", {}, token);
+      setUser(me.user);
+      if (me.user.mustChangePassword) {
+        setRooms([]);
+        setBookings([]);
+        return;
+      }
+      const [roomData, bookingData] = await Promise.all([
         api<{ rooms: Room[] }>("/api/rooms", {}, token),
         api<{ bookings: Booking[] }>("/api/bookings", {}, token)
       ]);
-      setUser(me.user);
       setRooms(roomData.rooms);
       setBookings(bookingData.bookings);
     } catch (error) {
@@ -103,7 +109,7 @@ export default function App() {
     setUser(null);
     setRooms([]);
     setBookings([]);
-    setCreatedCredentials([]);
+    setCreatedAccounts([]);
   }
 
   async function submitBooking(input: BookingInput, recurrenceCount: number) {
@@ -169,13 +175,13 @@ export default function App() {
 
   async function createUsers(users: { name: string; email: string }[]) {
     if (!token) return false;
-    setCreatedCredentials([]);
+    setCreatedAccounts([]);
     try {
-      const result = await api<{ created: CreatedCredential[] }>("/api/users/bulk", {
+      const result = await api<{ created: CreatedAccount[] }>("/api/users/bulk", {
         method: "POST",
         body: JSON.stringify({ users })
       }, token);
-      setCreatedCredentials(result.created);
+      setCreatedAccounts(result.created);
       setNotice({ kind: "success", text: `Đã tạo ${result.created.length} tài khoản người dùng.` });
       return true;
     } catch (error) {
@@ -185,12 +191,40 @@ export default function App() {
   }
 
   function navigate(nextView: View) {
-    if (nextView !== "users") setCreatedCredentials([]);
+    if (nextView !== "users") setCreatedAccounts([]);
     setView(nextView);
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const result = await api<AuthResponse>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword })
+      }, token);
+      localStorage.setItem("roomly-token", result.token);
+      setToken(result.token);
+      setUser(result.user);
+      const [roomData, bookingData] = await Promise.all([
+        api<{ rooms: Room[] }>("/api/rooms", {}, result.token),
+        api<{ bookings: Booking[] }>("/api/bookings", {}, result.token)
+      ]);
+      setRooms(roomData.rooms);
+      setBookings(bookingData.bookings);
+      setNotice({ kind: "success", text: "Đổi mật khẩu thành công." });
+    } catch (error) {
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!token) {
     return <LoginScreen onLogin={completeLogin} onError={handleError} />;
+  }
+  if (user?.mustChangePassword) {
+    return <ChangePasswordScreen user={user} onSubmit={changePassword} />;
   }
   if (!user) return <div className="loading-state"><span className="spinner" /> Đang xác thực phiên đăng nhập…</div>;
 
@@ -219,11 +253,11 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="help-card">
-            <div className="help-icon"><CircleHelp size={18} /></div>
+          <button type="button" className="help-card" onClick={() => setShowZaloContact(true)}>
+            <span className="help-icon"><CircleHelp size={18} /></span>
             <strong>Cần hỗ trợ?</strong>
-            <span>Liên hệ quản trị viên nếu bạn cần giúp đỡ.</span>
-          </div>
+            <span>Nhấn để kết bạn Zalo với quản trị viên.</span>
+          </button>
           <div className="profile">
             <div className="avatar">{user.name.slice(0, 1).toUpperCase()}</div>
             <div className="profile-info"><strong>{user.name}</strong><span>{user.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</span></div>
@@ -269,9 +303,9 @@ export default function App() {
                 }
               }} />}
               {view === "users" && user.role === "ADMIN" && <UsersView
-                createdCredentials={createdCredentials}
+                createdAccounts={createdAccounts}
                 onCreate={createUsers}
-                onClearCredentials={() => setCreatedCredentials([])}
+                onClearCredentials={() => setCreatedAccounts([])}
               />}
             </>
           )}
@@ -282,6 +316,16 @@ export default function App() {
       {showBooking && <BookingModal rooms={rooms} onClose={() => setShowBooking(false)} onSubmit={submitBooking} />}
       {showRoomForm && <RoomModal onClose={() => setShowRoomForm(false)} onSubmit={saveRoom} />}
       {editingRoom && <RoomModal room={editingRoom} onClose={() => setEditingRoom(null)} onSubmit={saveRoom} />}
+      {showZaloContact && <Modal title="Liên hệ hỗ trợ qua Zalo" subtitle="Kết bạn để được quản trị viên hỗ trợ." onClose={() => setShowZaloContact(false)}>
+        <div className="zalo-contact">
+          <span className="zalo-contact-icon"><MessageCircle size={25} /></span>
+          <p>Gửi lời mời kết bạn tới Zalo của quản trị viên:</p>
+          <strong className="zalo-phone">0855 799 066</strong>
+          <a className="button button-primary button-wide" href="https://zalo.me/0855799066" target="_blank" rel="noreferrer">
+            <MessageCircle size={17} /> Mở Zalo và kết bạn
+          </a>
+        </div>
+      </Modal>}
     </div>
   );
 }
@@ -330,6 +374,58 @@ function LoginScreen({ onLogin, onError }: { onLogin: (data: AuthResponse) => vo
         <div className="aside-decoration deco-one" /><div className="aside-decoration deco-two" />
         <div className="aside-copy"><span className="eyebrow light">ROOMLY · MEETING SPACE</span><h2>Một không gian tốt<br />bắt đầu từ <em>một lịch tốt.</em></h2><p>Đặt chỗ nhanh chóng, xem lịch phòng trực quan và dành thời gian cho điều quan trọng.</p></div>
         <div className="aside-footer"><span>Không gian dành cho ý tưởng lớn.</span><span>01 — 04</span></div>
+      </div>
+    </div>
+  );
+}
+
+function ChangePasswordScreen({ user, onSubmit }: {
+  user: User;
+  onSubmit: (currentPassword: string, newPassword: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage("");
+    const form = new FormData(event.currentTarget);
+    const currentPassword = String(form.get("currentPassword") ?? "");
+    const newPassword = String(form.get("newPassword") ?? "");
+    if (newPassword !== form.get("confirmPassword")) {
+      setErrorMessage("Mật khẩu mới và xác nhận mật khẩu không khớp.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSubmit(currentPassword, newPassword);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể đổi mật khẩu.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <a className="brand auth-brand" href="/"><span className="brand-mark"><DoorOpen size={21} /></span><span>roomly<span className="brand-dot">.</span></span></a>
+        <div className="eyebrow">BẢO MẬT TÀI KHOẢN</div>
+        <h1>Đổi mật khẩu để tiếp tục</h1>
+        <p className="muted">Xin chào {user.name}. Vì bạn đang sử dụng mật khẩu mặc định, hãy tạo mật khẩu mới trước khi sử dụng Roomly.</p>
+        <form className="form-stack" onSubmit={submit}>
+          <label>Mật khẩu hiện tại<input name="currentPassword" type="password" required autoComplete="current-password" /></label>
+          <label>Mật khẩu mới<input name="newPassword" type="password" required minLength={8} maxLength={100} autoComplete="new-password" /></label>
+          <label>Xác nhận mật khẩu mới<input name="confirmPassword" type="password" required minLength={8} maxLength={100} autoComplete="new-password" /></label>
+          <button className="button button-primary button-wide" disabled={busy}>{busy ? "Đang cập nhật…" : "Đổi mật khẩu"} <ArrowRight size={17} /></button>
+        </form>
+        {errorMessage && <p className="auth-error" role="alert">{errorMessage}</p>}
+        <p className="auth-switch">Đang đăng nhập với tài khoản <strong>{user.email}</strong></p>
+      </div>
+      <div className="auth-aside">
+        <div className="aside-decoration deco-one" /><div className="aside-decoration deco-two" />
+        <div className="aside-copy"><span className="eyebrow light">ROOMLY · BẢO MẬT</span><h2>Bảo vệ tài khoản<br />bằng <em>mật khẩu riêng.</em></h2><p>Chọn mật khẩu mới dài ít nhất 8 ký tự và không dùng chung với mật khẩu ở nơi khác.</p></div>
+        <div className="aside-footer"><span>Chỉ mất một phút để bắt đầu.</span><span>01 — 04</span></div>
       </div>
     </div>
   );
@@ -451,8 +547,8 @@ function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
   );
 }
 
-function UsersView({ createdCredentials, onCreate, onClearCredentials }: {
-  createdCredentials: CreatedCredential[];
+function UsersView({ createdAccounts, onCreate, onClearCredentials }: {
+  createdAccounts: CreatedAccount[];
   onCreate: (users: { name: string; email: string }[]) => Promise<boolean>;
   onClearCredentials: () => void;
 }) {
@@ -504,9 +600,9 @@ function UsersView({ createdCredentials, onCreate, onClearCredentials }: {
 
   async function copyCredentials() {
     const csv = [
-      "Tên,Email,Mật khẩu tạm",
-      ...createdCredentials.map(({ name, email, temporaryPassword }) =>
-        [name, email, temporaryPassword].map((value) => `"${value.replaceAll('"', '""')}"`).join(",")
+      "Tên,Email,Mật khẩu ban đầu",
+      ...createdAccounts.map(({ name, email }) =>
+        [name, email, "12345678"].map((value) => `"${value.replaceAll('"', '""')}"`).join(",")
       )
     ].join("\n");
     try {
@@ -556,21 +652,21 @@ function UsersView({ createdCredentials, onCreate, onClearCredentials }: {
         </section>
         <aside className="panel users-security-panel">
           <span className="users-security-icon"><ShieldCheck size={24} /></span>
-          <h2>Mật khẩu riêng cho từng người</h2>
-          <p>Mỗi tài khoản được cấp một mật khẩu ngẫu nhiên. Mật khẩu chỉ hiển thị một lần ngay sau khi tạo thành công.</p>
-          <p>Hãy sao chép và gửi thông tin đăng nhập cho đúng người dùng qua kênh riêng tư. Khi rời mục này, danh sách mật khẩu sẽ bị xóa khỏi màn hình.</p>
+          <h2>Mật khẩu mặc định ban đầu</h2>
+          <p>Tất cả tài khoản do admin tạo có mật khẩu ban đầu <code>12345678</code>. Người dùng bắt buộc phải đổi mật khẩu ngay lần đầu đăng nhập.</p>
+          <p>Hãy gửi mật khẩu này cho người dùng qua kênh riêng tư. Không sử dụng mật khẩu mặc định cho tài khoản quản trị viên.</p>
         </aside>
       </div>
-      {createdCredentials.length > 0 && (
+      {createdAccounts.length > 0 && (
         <section className="panel credentials-panel">
           <div className="panel-heading">
-            <div><h2>Đã tạo {createdCredentials.length} tài khoản</h2><p>Sao chép danh sách này ngay; mật khẩu sẽ không thể xem lại sau khi rời trang.</p></div>
+            <div><h2>Đã tạo {createdAccounts.length} tài khoản</h2><p>Mật khẩu ban đầu là 12345678; người dùng sẽ phải đổi sau khi đăng nhập.</p></div>
             <div className="credentials-actions">
               <button className="button button-outline button-small" onClick={() => void copyCredentials()}><Copy size={15} /> Sao chép danh sách</button>
               <button className="icon-button" aria-label="Ẩn mật khẩu" onClick={onClearCredentials}><X size={17} /></button>
             </div>
           </div>
-          <div className="table-wrap"><table><thead><tr><th>TÊN</th><th>EMAIL</th><th>MẬT KHẨU TẠM</th></tr></thead><tbody>{createdCredentials.map((credential) => <tr key={credential.email}><td><strong>{credential.name}</strong></td><td>{credential.email}</td><td><code className="temporary-password">{credential.temporaryPassword}</code></td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>TÊN</th><th>EMAIL</th><th>MẬT KHẨU BAN ĐẦU</th></tr></thead><tbody>{createdAccounts.map((account) => <tr key={account.email}><td><strong>{account.name}</strong></td><td>{account.email}</td><td><code className="temporary-password">12345678</code></td></tr>)}</tbody></table></div>
           {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
         </section>
       )}
