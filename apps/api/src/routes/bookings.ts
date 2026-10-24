@@ -24,7 +24,7 @@ bookingsRouter.get("/", async (request, response) => {
     },
     include: {
       room: true,
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true, email: true, department: true } },
       series: { select: { id: true, recurrenceCount: true, recurrence: true } }
     },
     orderBy: { startTime: "asc" }
@@ -39,7 +39,7 @@ bookingsRouter.get("/:id", async (request, response) => {
     where: { id: bookingId },
     include: {
       room: true,
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true, email: true, department: true } },
       series: { select: { id: true, recurrenceCount: true, recurrence: true } }
     }
   });

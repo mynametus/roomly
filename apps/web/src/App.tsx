@@ -560,7 +560,7 @@ function BookingRow({ booking, canManage, onCancel }: { booking: Booking; canMan
     <div className="booking-row">
       <div className="date-block"><strong>{format(new Date(booking.startTime), "dd")}</strong><span>{format(new Date(booking.startTime), "MMM", { locale: vi })}</span></div>
       <span className="booking-color" />
-      <div className="booking-main"><strong>{booking.room.name}</strong><span>{booking.room.location} · {clock(booking.startTime)}–{clock(booking.endTime)}</span><small>{booking.user.name} · {booking.attendeeCount} người</small></div>
+      <div className="booking-main"><strong>{booking.room.name}</strong><span>{booking.room.location} · {clock(booking.startTime)}–{clock(booking.endTime)}</span><small>{booking.user.name} · {booking.user.department || "Chưa cập nhật bộ phận"} · {booking.attendeeCount} người</small></div>
       <div className="booking-end"><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span>{canManage && booking.status === "CONFIRMED" && <button className="text-link cancel-link" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy</button>}</div>
     </div>
   );
@@ -587,7 +587,7 @@ function CalendarView({ bookings, week, rooms, onWeekChange, onCreate }: {
             const room = rooms.find((item) => item.id === roomId)!;
             return <div className="calendar-room-row" key={roomId}><div className="calendar-room-name"><strong>{room.name}</strong><span>{room.capacity} chỗ</span></div>{days.map((day) => {
               const dayBookings = weekBookings.filter((booking) => booking.roomId === roomId && isSameDay(new Date(booking.startTime), day));
-              return <div key={day.toISOString()} className={`calendar-cell ${isToday(day) ? "today-cell" : ""}`}>{dayBookings.map((booking) => <div className="calendar-event" key={booking.id} title={`${clock(booking.startTime)}–${clock(booking.endTime)} · ${booking.user.name}`}><strong>{clock(booking.startTime)}–{clock(booking.endTime)}</strong><span>{booking.user.name}</span></div>)}</div>;
+              return <div key={day.toISOString()} className={`calendar-cell ${isToday(day) ? "today-cell" : ""}`}>{dayBookings.map((booking) => <div className="calendar-event" key={booking.id} title={`${clock(booking.startTime)}–${clock(booking.endTime)} · ${booking.user.name} · ${booking.user.department || "Chưa cập nhật bộ phận"}`}><strong>{clock(booking.startTime)}–{clock(booking.endTime)}</strong><span>{booking.user.name}</span><small>{booking.user.department || "Chưa cập nhật bộ phận"}</small></div>)}</div>;
             })}</div>;
           })}
         </div>
@@ -614,7 +614,7 @@ export function BookingsView({ bookings, currentUserId, canManageAll, search, st
     <div className="panel table-panel">
       <div className="table-toolbar"><div className="search-field"><Search size={17} /><input aria-label="Tìm phòng hoặc người đặt" placeholder="Tìm phòng, người đặt..." value={search} onChange={(event) => onSearch(event.target.value)} /></div><select aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => onStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="CONFIRMED">Đã xác nhận</option><option value="CANCELLED">Đã hủy</option></select></div>
       {bookings.length ? <><div className="table-wrap"><table><thead><tr><th>PHÒNG HỌP</th><th>NGƯỜI ĐẶT</th><th>NGÀY & GIỜ</th><th>SỐ NGƯỜI</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead><tbody>{pageBookings.map((booking) => <tr key={booking.id}>
-        <td><strong>{booking.room.name}</strong><small>{booking.room.location}</small></td><td><strong>{booking.user.name}</strong><small>{booking.user.email}</small></td>
+        <td><strong>{booking.room.name}</strong><small>{booking.room.location}</small></td><td><strong>{booking.user.name}</strong><small>{booking.user.department || "Chưa cập nhật bộ phận"}</small><small>{booking.user.email}</small></td>
         <td><strong>{prettyDate(booking.startTime, { day: "numeric", month: "short", year: "numeric" })}</strong><small>{clock(booking.startTime)} – {clock(booking.endTime)}</small>{booking.series && <small>{recurrenceLabel(booking)}</small>}</td>
         <td>{booking.attendeeCount} người</td><td><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span></td>
         <td>{booking.status === "CONFIRMED" && (canManageAll || booking.userId === currentUserId) && <div className="booking-actions">{onEdit && <button className="table-action" onClick={() => onEdit(booking)}>Chỉnh sửa</button>}<button className="table-action" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy đặt</button></div>}</td>

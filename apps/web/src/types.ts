@@ -28,7 +28,7 @@ export type Booking = {
   status: "CONFIRMED" | "CANCELLED";
   canceledAt: string | null;
   room: Room;
-  user: Pick<User, "id" | "name" | "email">;
+  user: Pick<User, "id" | "name" | "email" | "department">;
   series: { id: string; recurrenceCount: number; recurrence?: RecurrenceRule | null } | null;
 };
 

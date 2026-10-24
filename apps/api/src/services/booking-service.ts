@@ -16,7 +16,7 @@ export type BookingPlanInput = BookingInput & {
 };
 type PlannedOccurrence = BookingInput & { date: string; excluded: boolean; id?: string };
 type BookingClient = Prisma.TransactionClient;
-const bookingInclude = { room: true, user: { select: { id: true, name: true, email: true } }, series: { select: { id: true, recurrenceCount: true, recurrence: true } } } as const;
+const bookingInclude = { room: true, user: { select: { id: true, name: true, email: true, department: true } }, series: { select: { id: true, recurrenceCount: true, recurrence: true } } } as const;
 
 async function lockRooms(transaction: BookingClient, roomIds: string[]) {
   for (const roomId of [...new Set(roomIds)].sort()) {

@@ -10,9 +10,9 @@ const noop = () => {};
 const ownBooking: Booking = {
   id: "own-booking", roomId: room.id, userId: "member", startTime: "2026-10-26T09:00:00+07:00", endTime: "2026-10-26T10:00:00+07:00",
   attendeeCount: 4, status: "CONFIRMED", canceledAt: null, room,
-  user: { id: "member", name: "Current member", email: "member@example.com" }, series: null
+  user: { id: "member", name: "Current member", email: "member@example.com", department: "Kế toán" }, series: null
 };
-const otherBooking: Booking = { ...ownBooking, id: "other-booking", userId: "other-member", user: { id: "other-member", name: "Other member", email: "other@example.com" }, series: { id: "other-series", recurrenceCount: 3 } };
+const otherBooking: Booking = { ...ownBooking, id: "other-booking", userId: "other-member", user: { id: "other-member", name: "Other member", email: "other@example.com", department: "Nhân sự" }, series: { id: "other-series", recurrenceCount: 3 } };
 
 describe("room and booking controls by role", () => {
   it.each([{ rooms: [] }, { rooms: [room] }])("never offers room management to a user, including an empty catalog: $rooms", ({ rooms }) => {
@@ -94,7 +94,7 @@ describe("room and booking controls by role", () => {
   });
 
   it("offers all three series scopes and renders legacy and new series labels", () => {
-    const booking: Booking = { id: "booking", roomId: room.id, userId: "member", startTime: "2026-10-26T09:00:00+07:00", endTime: "2026-10-26T10:00:00+07:00", attendeeCount: 4, status: "CONFIRMED", canceledAt: null, room, user: { id: "member", name: "Member", email: "member@example.com" }, series: { id: "series", recurrenceCount: 3 } };
+    const booking: Booking = { id: "booking", roomId: room.id, userId: "member", startTime: "2026-10-26T09:00:00+07:00", endTime: "2026-10-26T10:00:00+07:00", attendeeCount: 4, status: "CONFIRMED", canceledAt: null, room, user: { id: "member", name: "Member", email: "member@example.com", department: "Kế toán" }, series: { id: "series", recurrenceCount: 3 } };
     const markup = renderToStaticMarkup(createElement(CancelBookingModal, { booking, onClose: noop, onSubmit: async () => {} }));
     expect(markup).toContain("Chỉ buổi này"); expect(markup).toContain("Buổi này và các buổi sau"); expect(markup).toContain("Toàn bộ chuỗi");
     expect(recurrenceLabel(booking)).toBe("Hàng tuần · 3 buổi");
