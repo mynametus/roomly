@@ -11,6 +11,7 @@ export type User = {
 export type Room = {
   id: string;
   name: string;
+  nameKo?: string | null;
   capacity: number;
   location: string;
   notes: string | null;

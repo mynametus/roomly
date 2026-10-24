@@ -65,6 +65,7 @@ export const bookingUpdateSchema = bookingSchema.extend({ scope: bookingScopeSch
 
 const roomFields = z.object({
   name: z.string().trim().min(2).max(80),
+  nameKo: z.string().trim().max(80).transform((value) => value || null).nullable().optional(),
   capacity: z.number().int().positive().max(500),
   location: z.string().trim().min(1).max(120),
   notes: z.string().trim().max(2000).transform((value) => value || null).nullable().optional(),

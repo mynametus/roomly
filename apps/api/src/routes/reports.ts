@@ -35,6 +35,7 @@ reportsRouter.get("/rooms", requireAdmin, async (request, response) => {
       room: {
         id: room.id,
         name: room.name,
+        nameKo: room.nameKo,
         location: room.location,
         status: room.status
       },

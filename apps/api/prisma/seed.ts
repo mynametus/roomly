@@ -67,9 +67,9 @@ async function main() {
     if (demo) {
       await transaction.room.createMany({
         data: [
-          { name: "Orchid", capacity: 8, location: "Tầng 2" },
-          { name: "Lotus", capacity: 12, location: "Tầng 3" },
-          { name: "Bamboo", capacity: 6, location: "Tầng 1" }
+          { name: "Orchid", nameKo: "오키드 회의실", capacity: 8, location: "Tầng 2" },
+          { name: "Lotus", nameKo: "로터스 회의실", capacity: 12, location: "Tầng 3" },
+          { name: "Bamboo", nameKo: "뱀부 회의실", capacity: 6, location: "Tầng 1" }
         ],
         skipDuplicates: true
       });

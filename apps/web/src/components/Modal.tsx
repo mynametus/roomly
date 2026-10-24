@@ -1,8 +1,9 @@
 import { useEffect, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { T, translate } from "../i18n";
 
 export function Modal({ title, subtitle, onClose, children, className = "" }: {
-  title: string; subtitle: string; onClose: () => void; children: ReactNode; className?: string;
+  title: string; subtitle: ReactNode; onClose: () => void; children: ReactNode; className?: string;
 }) {
   const titleId = useId();
   useEffect(() => {
@@ -12,7 +13,7 @@ export function Modal({ title, subtitle, onClose, children, className = "" }: {
   }, [onClose]);
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby={titleId} className={`modal-card ${className}`}>
-      <div className="modal-heading"><div><h2 id={titleId}>{title}</h2><p>{subtitle}</p></div><button className="icon-button" aria-label="Đóng" onClick={onClose}><X size={19} /></button></div>{children}
+      <div className="modal-heading"><div><h2 id={titleId}><T>{title}</T></h2><p>{typeof subtitle === "string" ? <T>{subtitle}</T> : subtitle}</p></div><button className="icon-button" aria-label={translate("Đóng")} onClick={onClose}><X size={19} /></button></div>{children}
     </section>
   </div>;
 }
