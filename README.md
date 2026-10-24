@@ -52,6 +52,14 @@ npm test
 npm run build
 ```
 
+Kiểm tra luồng tạo/sửa/hủy lịch với PostgreSQL thật (mọi bản ghi thử được rollback):
+
+```powershell
+$env:RUN_DATABASE_TESTS = "1"
+npm run test -w @roomly/api -- src/booking-database.test.ts --maxWorkers=1
+Remove-Item Env:RUN_DATABASE_TESTS
+```
+
 ## Triển khai Vercel
 
 Tạo hai Vercel Project cùng liên kết repository:

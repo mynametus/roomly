@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { intervalsOverlap, validateBookingTime } from "./booking-rules.js";
 import { businessDate, generateOccurrenceStarts, onBusinessDate, type RecurrenceRule } from "./recurrence.js";
 import { occurrenceUpdateStatement } from "./booking-update-sql.js";
+import { acquireBookingLock } from "./booking-lock.js";
 
 type BookingInput = { roomId: string; startTime: Date; endTime: Date; attendeeCount: number };
 export type BookingScope = "THIS" | "FOLLOWING" | "ALL";
@@ -19,7 +20,7 @@ const bookingInclude = { room: true, user: { select: { id: true, name: true, ema
 
 async function lockRooms(transaction: BookingClient, roomIds: string[]) {
   for (const roomId of [...new Set(roomIds)].sort()) {
-    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`room:${roomId}`}))`;
+    await acquireBookingLock(transaction, `room:${roomId}`);
   }
 }
 
@@ -147,7 +148,7 @@ export async function previewBookingUpdate(bookingId: string, userId: string, is
 export async function updateBooking(bookingId: string, userId: string, isAdmin: boolean, input: BookingInput & { scope: BookingScope }) {
   return prisma.$transaction(async (transaction) => {
     const selected = await ownedBooking(transaction, bookingId, userId, isAdmin);
-    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`series:${selected.seriesId ?? selected.id}`}))`;
+    await acquireBookingLock(transaction, `series:${selected.seriesId ?? selected.id}`);
     const plan = await editPlan(transaction, bookingId, userId, isAdmin, input);
     await lockRooms(transaction, [selected.roomId, ...plan.occurrences.map((item) => item.roomId)]);
     assertCanSave(await inspectPlan(transaction, plan.occurrences, plan.occurrences.map((item) => item.id!)));
@@ -160,7 +161,7 @@ export async function cancelBooking(bookingId: string, userId: string, isAdmin: 
   const actualScope = typeof scope === "boolean" ? scope ? "FOLLOWING" : "THIS" : scope;
   return prisma.$transaction(async (transaction) => {
     const initial = await ownedBooking(transaction, bookingId, userId, isAdmin);
-    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`series:${initial.seriesId ?? initial.id}`}))`;
+    await acquireBookingLock(transaction, `series:${initial.seriesId ?? initial.id}`);
     const booking = await ownedBooking(transaction, bookingId, userId, isAdmin);
     if (booking.status === BookingStatus.CANCELLED) throw new AppError("Lượt đặt này đã được hủy.", 409);
     const canceledAt = new Date();

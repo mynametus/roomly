@@ -23,4 +23,14 @@ Kiểm chứng: kiểm thử tự động cho ngày/tuần/tháng, năm nhuận,
 
 Kết quả cuối: 140 kiểm thử toàn bộ ứng dụng đạt; sau khi thêm trường hợp chuỗi dài 180 buổi, toàn bộ 18 kiểm thử của nhóm kế hoạch/phạm vi cũng đạt (tổng 141 trường hợp hiện có đã được kiểm chứng). TypeScript API và build giao diện đạt. Các script kiểm tra tạm đã được xóa.
 
-Giao diện đã được kiểm tra bằng render React và build TypeScript/Vite. Trình duyệt điều khiển tự động chưa được kết nối trong môi trường hiện tại, nên chưa có kiểm thử tương tác đầy đủ trên desktop/mobile. Chức năng mới hiện được chạy tại local; chưa triển khai mã tính năng mới lên Vercel.
+Giao diện đã được kiểm tra bằng render React và build TypeScript/Vite. Trình duyệt điều khiển tự động chưa được kết nối trong môi trường hiện tại, nên chưa có kiểm thử tương tác đầy đủ trên desktop/mobile.
+
+## Sửa lỗi xác nhận trên production ngày 24/10/2026
+
+Log Vercel xác nhận Prisma `P2010` khi đọc kết quả `void` của `pg_advisory_xact_lock`. Bước xem trước không chạy khóa nên thành công, còn tạo/sửa/hủy lịch có thể lỗi 500.
+
+Đã gom khóa phòng/chuỗi vào `acquireBookingLock`, ép riêng kết quả hàm khóa sang `text` để Prisma đọc được. Khóa vẫn giữ nguyên phạm vi transaction và cơ chế chống trùng lịch.
+
+Bổ sung kiểm thử HTTP với PostgreSQL thật: tạo chuỗi trả 201, trùng lịch trả 409, sửa/hủy trả 200; toàn bộ bản ghi thử được rollback. Kiểm thử hai giao dịch xác nhận khóa vẫn độc quyền và được nhả khi transaction kết thúc. Toàn bộ **143 kiểm thử đạt**, kiểm tra TypeScript API đạt.
+
+Backend đã được triển khai lên production trong deployment `dpl_69Zii1d38pTwqtiGikVqb1nZJ1pg`. Đối chiếu cùng yêu cầu với phòng không tồn tại: trước sửa trả 500 ở câu lệnh khóa, sau sửa trả 409 đúng kiểm tra nghiệp vụ; không tạo bản ghi kiểm thử trên production.
