@@ -47,12 +47,13 @@ Các kiểm tra trùng lịch trong cùng phòng, phòng đang hoạt động, s
 
 ## Vấn đề còn tồn tại, theo mức ưu tiên
 
-### 1. Cao — thông tin kết nối database thật nằm trong file mẫu được Git theo dõi
+### 1. Cao — thông tin kết nối database thật từng nằm trong file mẫu được Git theo dõi
 
 - Vị trí: `apps/api/.env.example:1`.
-- Chuỗi kết nối chứa credential; kiểm tra trong bộ nhớ xác nhận credential và host khớp database đang cấu hình ở `apps/api/.env`.
+- Tại thời điểm rà soát, chuỗi kết nối chứa credential; kiểm tra trong bộ nhớ xác nhận credential và host khớp database đang cấu hình ở `apps/api/.env`.
 - Không có credential nào được chép vào báo cáo này. Chưa xác minh repository công khai hay những ai đã truy cập lịch sử Git.
 - Cần thay giá trị trong file mẫu bằng placeholder và thay/thu hồi credential đã đưa vào Git, đồng thời cập nhật cấu hình ứng dụng sử dụng credential đó. Chỉ sửa file hiện tại không xóa credential khỏi lịch sử Git.
+- Cập nhật sau rà soát: file mẫu đã được thay bằng placeholder và quét lại các file Git theo dõi không còn thấy mật khẩu database trong nội dung hiện tại. Việc thu hồi credential tại nhà cung cấp đang chờ xác thực tài khoản Prisma; chưa được đánh dấu hoàn tất.
 
 ### 2. Cao — đổi mật khẩu không thu hồi token đã phát hành
 

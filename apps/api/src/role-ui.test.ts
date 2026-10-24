@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BookingsView, RoomsView } from "../../web/src/App.js";
 
-const room = { id: "room-1", name: "Meeting room", capacity: 10, location: "Floor 1", amenities: [], status: "ACTIVE" as const };
+const room = { id: "room-1", name: "Meeting room", capacity: 10, location: "Floor 1", notes: null, amenities: [], status: "ACTIVE" as const };
 const noop = () => {};
 
 describe("room and booking controls by role", () => {
@@ -23,6 +23,22 @@ describe("room and booking controls by role", () => {
     expect(markup).toContain("Thêm phòng");
     expect(markup).toContain("Chỉnh sửa");
     expect(markup).toContain("Ngừng sử dụng");
+  });
+
+  it.each([false, true])("shows escaped multiline room notes for canManage=%s", (canManage) => {
+    const markup = renderToStaticMarkup(createElement(RoomsView, {
+      rooms: [{ ...room, notes: "Liên hệ lễ tân.\n<script>alert('x')</script>" }], canManage, onCreate: noop, onEdit: noop, onUpdate: noop
+    }));
+    expect(markup).toContain("Ghi chú");
+    expect(markup).toContain("Liên hệ lễ tân.\n&lt;script&gt;");
+    expect(markup).not.toContain("<script>");
+  });
+
+  it("does not show an empty notes section for rooms without notes", () => {
+    const markup = renderToStaticMarkup(createElement(RoomsView, {
+      rooms: [room], canManage: false, onCreate: noop, onEdit: noop, onUpdate: noop
+    }));
+    expect(markup).not.toContain('class="room-notes"');
   });
 
   it.each([false, true])("describes the correct booking scope with canManageAll=%s", (canManageAll) => {

@@ -13,6 +13,7 @@ export type Room = {
   name: string;
   capacity: number;
   location: string;
+  notes: string | null;
   amenities: string[];
   status: "ACTIVE" | "INACTIVE";
 };

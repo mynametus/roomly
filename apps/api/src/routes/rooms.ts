@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../lib/errors.js";
-import { availabilitySchema, roomSchema } from "../lib/validation.js";
+import { availabilitySchema, roomSchema, roomUpdateSchema } from "../lib/validation.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { validateBookingTime } from "../services/booking-rules.js";
 
@@ -40,7 +40,7 @@ roomsRouter.post("/", requireAdmin, async (request, response) => {
 });
 
 roomsRouter.patch("/:id", requireAdmin, async (request, response) => {
-  const input = roomSchema.partial().parse(request.body);
+  const input = roomUpdateSchema.parse(request.body);
   if (!Object.keys(input).length) throw new AppError("Cần cung cấp ít nhất một trường để cập nhật.");
   const roomId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
   if (!roomId) throw new AppError("Thiếu mã phòng.");

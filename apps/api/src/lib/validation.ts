@@ -30,13 +30,21 @@ export const recurringBookingSchema = bookingSchema.extend({
   recurrenceCount: z.number().int().min(2).max(8)
 });
 
-export const roomSchema = z.object({
+const roomFields = z.object({
   name: z.string().trim().min(2).max(80),
   capacity: z.number().int().positive().max(500),
   location: z.string().trim().min(1).max(120),
-  amenities: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
-  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE")
+  notes: z.string().trim().max(2000).transform((value) => value || null).nullable().optional(),
+  amenities: z.array(z.string().trim().min(1).max(40)).max(20),
+  status: z.enum(["ACTIVE", "INACTIVE"])
 });
+
+export const roomSchema = roomFields.extend({
+  amenities: roomFields.shape.amenities.default([]),
+  status: roomFields.shape.status.default("ACTIVE")
+});
+
+export const roomUpdateSchema = roomFields.partial();
 
 export const availabilitySchema = z.object({
   startTime: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),

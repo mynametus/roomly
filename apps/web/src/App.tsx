@@ -682,6 +682,7 @@ function AvailabilityView({ onSearch, amenities, onBook, onError }: {
           <div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className="room-status active"><i />Còn trống</span></div>
             <div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span></div>
             <AmenityBadges amenities={room.amenities} />
+            <RoomNotes notes={room.notes} />
             <button className="button button-primary button-wide" onClick={() => query && onBook(room, query)}><Plus size={16} /> Đặt phòng này</button>
           </div>
         </article>)}</div> : <div className="panel"><EmptyState title="Chưa tìm thấy phòng phù hợp" text="Thử giảm số người hoặc bỏ bớt tiện nghi cần có." /></div>}
@@ -695,13 +696,18 @@ function AmenityBadges({ amenities }: { amenities: string[] }) {
   return <div className="amenity-badges">{amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div>;
 }
 
+function RoomNotes({ notes }: { notes: Room["notes"] }) {
+  if (!notes) return null;
+  return <div className="room-notes"><strong>Ghi chú</strong><p>{notes}</p></div>;
+}
+
 export function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
   rooms: Room[]; canManage: boolean; onCreate: () => void; onEdit: (room: Room) => void; onUpdate: (room: Room) => void;
 }) {
   return (
     <>
       <PageHeading eyebrow="KHÔNG GIAN LÀM VIỆC" title="Danh sách phòng" description="Tìm phòng phù hợp cho cuộc họp tiếp theo." action={canManage ? <button className="button button-primary" onClick={onCreate}><Plus size={17} /> Thêm phòng</button> : undefined} />
-      <div className="rooms-grid">{rooms.map((room, index) => <article key={room.id} className={`room-card room-art-${index % 3}`}><div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div><div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className={`room-status ${room.status === "ACTIVE" ? "active" : "inactive"}`}><i />{room.status === "ACTIVE" ? "Sẵn sàng" : "Tạm ngưng"}</span></div><div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span><span><CalendarDays size={16} /> Đặt theo giờ</span></div><AmenityBadges amenities={room.amenities} /><div className="room-card-foot"><span>Phòng họp · {room.location}</span>{canManage && <div className="room-admin-actions"><button className="table-action" onClick={() => onEdit(room)}>Chỉnh sửa</button><button className="table-action" onClick={() => onUpdate(room)}>{room.status === "ACTIVE" ? "Ngừng sử dụng" : "Kích hoạt"}</button></div>}</div></div></article>)}</div>
+      <div className="rooms-grid">{rooms.map((room, index) => <article key={room.id} className={`room-card room-art-${index % 3}`}><div className="room-art"><span className="room-art-label">ROOM {String(index + 1).padStart(2, "0")}</span><DoorOpen size={52} strokeWidth={1.2} /><span className="room-art-shape" /></div><div className="room-card-body"><div className="room-card-title"><div><h2>{room.name}</h2><span>{room.location}</span></div><span className={`room-status ${room.status === "ACTIVE" ? "active" : "inactive"}`}><i />{room.status === "ACTIVE" ? "Sẵn sàng" : "Tạm ngưng"}</span></div><div className="room-features"><span><Users size={16} /> Tối đa {room.capacity} người</span><span><CalendarDays size={16} /> Đặt theo giờ</span></div><AmenityBadges amenities={room.amenities} /><RoomNotes notes={room.notes} /><div className="room-card-foot"><span>Phòng họp · {room.location}</span>{canManage && <div className="room-admin-actions"><button className="table-action" onClick={() => onEdit(room)}>Chỉnh sửa</button><button className="table-action" onClick={() => onUpdate(room)}>{room.status === "ACTIVE" ? "Ngừng sử dụng" : "Kích hoạt"}</button></div>}</div></div></article>)}</div>
       {!rooms.length && <div className="panel"><EmptyState title="Chưa có phòng nào" text={canManage ? "Thêm phòng họp đầu tiên vào hệ thống." : "Vui lòng liên hệ quản trị viên để bổ sung phòng họp."} action={canManage ? <button className="button button-primary button-small" onClick={onCreate}><Plus size={15} /> Thêm phòng</button> : undefined} /></div>}
     </>
   );
@@ -1047,6 +1053,8 @@ function BookingModal({ rooms, initialValues, onClose, onSubmit }: {
   onSubmit: (input: BookingInput, recurrence: number) => void;
 }) {
   const activeRooms = rooms.filter((room) => room.status === "ACTIVE");
+  const [selectedRoomId, setSelectedRoomId] = useState(initialValues?.roomId ?? "");
+  const selectedRoom = activeRooms.find((room) => room.id === selectedRoomId);
   const [recurrence, setRecurrence] = useState("1");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -1067,7 +1075,8 @@ function BookingModal({ rooms, initialValues, onClose, onSubmit }: {
   const initialStart = initialValues?.startTime ? format(new Date(initialValues.startTime), "HH:mm") : "09:00";
   const initialEnd = initialValues?.endTime ? format(new Date(initialValues.endTime), "HH:mm") : "10:00";
   return <Modal title="Đặt phòng họp" subtitle="Điền thông tin để giữ chỗ cho cuộc họp." onClose={onClose}><form className="form-stack" onSubmit={submit}>
-    <label>Phòng họp<select name="roomId" required defaultValue={initialValues?.roomId ?? ""}><option value="" disabled>Chọn phòng</option>{activeRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.location} · {room.capacity} chỗ</option>)}</select></label>
+    <label>Phòng họp<select name="roomId" required value={selectedRoomId} onChange={(event) => setSelectedRoomId(event.target.value)}><option value="" disabled>Chọn phòng</option>{activeRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.location} · {room.capacity} chỗ</option>)}</select></label>
+    <RoomNotes notes={selectedRoom?.notes ?? null} />
     <label>Ngày họp<input name="date" type="date" required min={today()} defaultValue={initialDate} /></label>
     <div className="form-row"><label>Giờ bắt đầu<input name="start" type="time" required defaultValue={initialStart} /></label><label>Giờ kết thúc<input name="end" type="time" required defaultValue={initialEnd} /></label></div>
     <div className="form-row"><label>Số người tham dự<input name="attendeeCount" type="number" required min="1" max="500" defaultValue={initialValues?.attendeeCount ?? 4} /></label><label>Hình thức đặt<select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option value="1">Một lần</option><option value="2">2 buổi hàng tuần</option><option value="3">3 buổi hàng tuần</option><option value="4">4 buổi hàng tuần</option><option value="5">5 buổi hàng tuần</option><option value="6">6 buổi hàng tuần</option><option value="7">7 buổi hàng tuần</option><option value="8">8 buổi hàng tuần</option></select></label></div>
@@ -1087,6 +1096,7 @@ function RoomModal({ room, onClose, onSubmit }: {
     await onSubmit({
       name: String(form.get("name")),
       location: String(form.get("location")),
+      notes: String(form.get("notes") ?? "").trim() || null,
       capacity: Number(form.get("capacity")),
       amenities: String(form.get("amenities") ?? "").split(",").map((amenity) => amenity.trim()).filter(Boolean),
       status: room?.status ?? "ACTIVE"
@@ -1098,6 +1108,7 @@ function RoomModal({ room, onClose, onSubmit }: {
     <label>Vị trí<input name="location" required maxLength={120} placeholder="Ví dụ: Tầng 2" defaultValue={room?.location} /></label>
     <label>Sức chứa<input name="capacity" type="number" required min="1" max="500" placeholder="Số người tối đa" defaultValue={room?.capacity} /></label>
     <label>Tiện nghi<input name="amenities" placeholder="Máy chiếu, Màn hình, Bảng trắng" defaultValue={room?.amenities.join(", ")} /><span className="form-hint">Phân cách từng tiện nghi bằng dấu phẩy.</span></label>
+    <label>Ghi chú (không bắt buộc)<textarea className="room-notes-input" name="notes" rows={3} maxLength={2000} defaultValue={room?.notes ?? ""} placeholder="Ví dụ: Liên hệ lễ tân để lấy chìa khóa; sắp xếp lại bàn ghế sau khi sử dụng." /><span className="form-hint">Tối đa 2.000 ký tự. Có thể để trống.</span></label>
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? "Đang lưu…" : room ? "Lưu thay đổi" : "Thêm phòng"} <ArrowRight size={16} /></button></div>
   </form></Modal>;
 }
