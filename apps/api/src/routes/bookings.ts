@@ -15,10 +15,8 @@ bookingsRouter.get("/", async (request, response) => {
     to: z.iso.datetime({ offset: true }).optional(),
     status: z.enum(["CONFIRMED", "CANCELLED"]).optional()
   }).parse(request.query);
-  const user = (request as AuthenticatedRequest).user!;
   const bookings = await prisma.booking.findMany({
     where: {
-      ...(user.role === "ADMIN" ? {} : { userId: user.id }),
       ...(status ? { status: status as BookingStatus } : {}),
       ...(from || to
         ? { startTime: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lt: new Date(to) } : {}) } }
@@ -37,7 +35,6 @@ bookingsRouter.get("/", async (request, response) => {
 bookingsRouter.get("/:id", async (request, response) => {
   const bookingId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
   if (!bookingId) throw new AppError("Thiếu mã lượt đặt.");
-  const user = (request as AuthenticatedRequest).user!;
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
     include: {
@@ -47,9 +44,6 @@ bookingsRouter.get("/:id", async (request, response) => {
     }
   });
   if (!booking) throw new AppError("Không tìm thấy lượt đặt.", 404);
-  if (user.role !== "ADMIN" && booking.userId !== user.id) {
-    throw new AppError("Bạn không có quyền xem lượt đặt này.", 403);
-  }
   response.json({ booking });
 });
 

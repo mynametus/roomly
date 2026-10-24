@@ -92,24 +92,20 @@ export default function App() {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
-  const visibleBookings = useMemo(
-    () => isAdmin ? bookings : bookings.filter((booking) => booking.userId === user?.id),
-    [bookings, isAdmin, user?.id]
-  );
   const upcoming = useMemo(
-    () => visibleBookings.filter((booking) => booking.status === "CONFIRMED" && new Date(booking.endTime) >= new Date()),
-    [visibleBookings]
+    () => bookings.filter((booking) => booking.status === "CONFIRMED" && new Date(booking.endTime) >= new Date()),
+    [bookings]
   );
   const filteredBookings = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("vi");
-    return visibleBookings.filter((booking) => {
+    return bookings.filter((booking) => {
       const matchesStatus = statusFilter === "ALL" || booking.status === statusFilter;
       const matchesSearch = !query || [
         booking.room.name, booking.room.location, booking.user.name, booking.user.email
       ].some((value) => value.toLocaleLowerCase("vi").includes(query));
       return matchesStatus && matchesSearch;
     });
-  }, [visibleBookings, search, statusFilter]);
+  }, [bookings, search, statusFilter]);
 
   async function completeLogin(result: AuthResponse) {
     localStorage.setItem("roomly-token", result.token);
@@ -154,7 +150,10 @@ export default function App() {
     catch (error) { handleError(error); throw error; }
   }
 
-  function cancel(booking: Booking, _fromHere: boolean) { setCancelTarget(booking); }
+  function cancel(booking: Booking, _fromHere: boolean) {
+    if (!isAdmin && booking.userId !== user?.id) return;
+    setCancelTarget(booking);
+  }
 
   async function confirmCancellation(scope: BookingScope) {
     if (!token || !cancelTarget) throw new Error("Vui lòng đăng nhập lại.");
@@ -292,7 +291,7 @@ export default function App() {
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { id: "availability", label: "Tìm phòng trống", icon: CalendarSearch },
     { id: "calendar", label: "Lịch phòng", icon: CalendarDays },
-    { id: "bookings", label: isAdmin ? "Quản lý đặt phòng" : "Đặt phòng của tôi", icon: Clock3 },
+    { id: "bookings", label: isAdmin ? "Quản lý đặt phòng" : "Lịch đặt phòng", icon: Clock3 },
     { id: "rooms", label: isAdmin ? "Quản lý phòng" : "Danh sách phòng", icon: DoorOpen },
     ...(isAdmin ? [
       { id: "users" as const, label: "Quản lý tài khoản", icon: UserRoundCog },
@@ -344,18 +343,19 @@ export default function App() {
         <div className="page-content">
           {loading ? <div className="loading-state"><span className="spinner" /> Đang tải dữ liệu…</div> : (
             <>
-              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} onCreate={() => openBooking()} onNavigate={navigate} onCancel={cancel} />}
+              {view === "overview" && <Overview rooms={rooms} upcoming={upcoming} currentUserId={user.id} canManageAll={isAdmin} onCreate={() => openBooking()} onNavigate={navigate} onCancel={cancel} />}
               {view === "availability" && <AvailabilityView
                 onSearch={searchAvailableRooms}
                 amenities={Array.from(new Set([...roomAmenityOptions, ...rooms.flatMap((room) => room.amenities)]))}
                 onBook={(room, input) => openBooking({ roomId: room.id, startTime: input.startTime, endTime: input.endTime, attendeeCount: input.attendeeCount })}
                 onError={handleError}
               />}
-              {view === "calendar" && <CalendarView bookings={visibleBookings} week={week} rooms={rooms} onWeekChange={setWeek} onCreate={() => openBooking()} />}
+              {view === "calendar" && <CalendarView bookings={bookings} week={week} rooms={rooms} onWeekChange={setWeek} onCreate={() => openBooking()} />}
               {view === "bookings" && (
                 <BookingsView
                   bookings={filteredBookings}
                   canManageAll={isAdmin}
+                  currentUserId={user.id}
                   search={search}
                   statusFilter={statusFilter}
                   onSearch={setSearch}
@@ -512,8 +512,8 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
   return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action}</div>;
 }
 
-function Overview({ rooms, upcoming, onCreate, onNavigate, onCancel }: {
-  rooms: Room[]; upcoming: Booking[]; onCreate: () => void; onNavigate: (view: View) => void;
+export function Overview({ rooms, upcoming, currentUserId, canManageAll, onCreate, onNavigate, onCancel }: {
+  rooms: Room[]; upcoming: Booking[]; currentUserId: string; canManageAll: boolean; onCreate: () => void; onNavigate: (view: View) => void;
   onCancel: (booking: Booking, fromHere: boolean) => void;
 }) {
   const activeRooms = rooms.filter((room) => room.status === "ACTIVE").length;
@@ -537,7 +537,7 @@ function Overview({ rooms, upcoming, onCreate, onNavigate, onCancel }: {
       <section className="overview-grid">
         <div className="panel upcoming-panel">
           <div className="panel-heading"><div><h2>Lịch sắp tới</h2><p>Các cuộc họp đã được xác nhận</p></div><button className="text-link" onClick={() => onNavigate("bookings")}>Xem tất cả <ArrowRight size={15} /></button></div>
-          {nextBookings.length ? <div className="upcoming-list">{nextBookings.map((booking) => <BookingRow key={booking.id} booking={booking} onCancel={onCancel} />)}</div> : <EmptyState title="Chưa có lịch đặt sắp tới" text="Tạo lịch mới để bắt đầu sử dụng phòng họp." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
+          {nextBookings.length ? <div className="upcoming-list">{nextBookings.map((booking) => <BookingRow key={booking.id} booking={booking} canManage={canManageAll || booking.userId === currentUserId} onCancel={onCancel} />)}</div> : <EmptyState title="Chưa có lịch đặt sắp tới" text="Tạo lịch mới để bắt đầu sử dụng phòng họp." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
         </div>
         <div className="panel quick-panel">
           <div className="panel-heading"><div><h2>Thao tác nhanh</h2><p>Bắt đầu chỉ với một chạm</p></div><Settings2 size={18} className="muted-icon" /></div>
@@ -555,13 +555,13 @@ function StatCard({ icon, label, value, sub, tone }: { icon: ReactNode; label: s
   return <div className="stat-card"><span className={`stat-icon ${tone}`}>{icon}</span><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><span className="stat-sub">{sub}</span></div>;
 }
 
-function BookingRow({ booking, onCancel }: { booking: Booking; onCancel: (booking: Booking, fromHere: boolean) => void }) {
+function BookingRow({ booking, canManage, onCancel }: { booking: Booking; canManage: boolean; onCancel: (booking: Booking, fromHere: boolean) => void }) {
   return (
     <div className="booking-row">
       <div className="date-block"><strong>{format(new Date(booking.startTime), "dd")}</strong><span>{format(new Date(booking.startTime), "MMM", { locale: vi })}</span></div>
       <span className="booking-color" />
       <div className="booking-main"><strong>{booking.room.name}</strong><span>{booking.room.location} · {clock(booking.startTime)}–{clock(booking.endTime)}</span><small>{booking.user.name} · {booking.attendeeCount} người</small></div>
-      <div className="booking-end"><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span>{booking.status === "CONFIRMED" && <button className="text-link cancel-link" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy</button>}</div>
+      <div className="booking-end"><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span>{canManage && booking.status === "CONFIRMED" && <button className="text-link cancel-link" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy</button>}</div>
     </div>
   );
 }
@@ -597,20 +597,28 @@ function CalendarView({ bookings, week, rooms, onWeekChange, onCreate }: {
   );
 }
 
-export function BookingsView({ bookings, canManageAll, search, statusFilter, onSearch, onStatus, onCancel, onCreate, onEdit }: {
-  bookings: Booking[]; canManageAll: boolean; search: string; statusFilter: string; onSearch: (value: string) => void;
+export function BookingsView({ bookings, currentUserId, canManageAll, search, statusFilter, onSearch, onStatus, onCancel, onCreate, onEdit }: {
+  bookings: Booking[]; currentUserId: string; canManageAll: boolean; search: string; statusFilter: string; onSearch: (value: string) => void;
   onStatus: (value: string) => void; onCancel: (booking: Booking, fromHere: boolean) => void; onCreate: () => void; onEdit?: (booking: Booking) => void;
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(bookings.length / pageSize));
+  useEffect(() => setCurrentPage(1), [search, statusFilter]);
+  useEffect(() => setCurrentPage((page) => Math.min(page, pageCount)), [pageCount]);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageBookings = bookings.slice(pageStart, pageStart + pageSize);
+
   return <>
-    <PageHeading eyebrow="QUẢN LÝ LỊCH" title={canManageAll ? "Quản lý đặt phòng" : "Đặt phòng của tôi"} description={canManageAll ? "Tìm kiếm, theo dõi và quản lý lượt đặt phòng của tất cả người dùng." : "Tìm kiếm, theo dõi và quản lý các lượt đặt phòng của chính bạn."} action={<button className="button button-primary" onClick={onCreate}><Plus size={17} /> Đặt phòng mới</button>} />
+    <PageHeading eyebrow="LỊCH ĐẶT PHÒNG" title={canManageAll ? "Quản lý đặt phòng" : "Lịch đặt phòng"} description={canManageAll ? "Tìm kiếm, theo dõi và quản lý lượt đặt phòng của tất cả người dùng." : "Xem lịch đặt phòng của mọi người. Bạn có thể tạo lịch mới, chỉnh sửa và hủy lịch của chính mình."} action={<button className="button button-primary" onClick={onCreate}><Plus size={17} /> Đặt phòng mới</button>} />
     <div className="panel table-panel">
       <div className="table-toolbar"><div className="search-field"><Search size={17} /><input aria-label="Tìm phòng hoặc người đặt" placeholder="Tìm phòng, người đặt..." value={search} onChange={(event) => onSearch(event.target.value)} /></div><select aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => onStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="CONFIRMED">Đã xác nhận</option><option value="CANCELLED">Đã hủy</option></select></div>
-      {bookings.length ? <div className="table-wrap"><table><thead><tr><th>PHÒNG HỌP</th><th>NGƯỜI ĐẶT</th><th>NGÀY & GIỜ</th><th>SỐ NGƯỜI</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead><tbody>{bookings.map((booking) => <tr key={booking.id}>
+      {bookings.length ? <><div className="table-wrap"><table><thead><tr><th>PHÒNG HỌP</th><th>NGƯỜI ĐẶT</th><th>NGÀY & GIỜ</th><th>SỐ NGƯỜI</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead><tbody>{pageBookings.map((booking) => <tr key={booking.id}>
         <td><strong>{booking.room.name}</strong><small>{booking.room.location}</small></td><td><strong>{booking.user.name}</strong><small>{booking.user.email}</small></td>
         <td><strong>{prettyDate(booking.startTime, { day: "numeric", month: "short", year: "numeric" })}</strong><small>{clock(booking.startTime)} – {clock(booking.endTime)}</small>{booking.series && <small>{recurrenceLabel(booking)}</small>}</td>
         <td>{booking.attendeeCount} người</td><td><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span></td>
-        <td>{booking.status === "CONFIRMED" && <div className="booking-actions">{onEdit && <button className="table-action" onClick={() => onEdit(booking)}>Chỉnh sửa</button>}<button className="table-action" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy đặt</button></div>}</td>
-      </tr>)}</tbody></table></div> : <EmptyState title="Không tìm thấy lượt đặt" text="Thử thay đổi bộ lọc hoặc tạo một lượt đặt mới." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
+        <td>{booking.status === "CONFIRMED" && (canManageAll || booking.userId === currentUserId) && <div className="booking-actions">{onEdit && <button className="table-action" onClick={() => onEdit(booking)}>Chỉnh sửa</button>}<button className="table-action" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy đặt</button></div>}</td>
+      </tr>)}</tbody></table></div>{pageCount > 1 && <div className="booking-pagination"><span>Hiển thị {pageStart + 1}–{Math.min(pageStart + pageSize, bookings.length)} trong {bookings.length} lịch</span><div className="booking-pagination-controls"><button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}><ArrowLeft size={15} /> Trước</button><span>Trang {currentPage} / {pageCount}</span><button type="button" disabled={currentPage === pageCount} onClick={() => setCurrentPage((page) => page + 1)}>Tiếp <ArrowRight size={15} /></button></div></div>}</> : <EmptyState title="Không tìm thấy lượt đặt" text="Thử thay đổi bộ lọc hoặc tạo một lượt đặt mới." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
     </div>
   </>;
 }

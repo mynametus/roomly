@@ -1,12 +1,18 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { BookingsView, RoomsView } from "../../web/src/App.js";
+import { BookingsView, Overview, RoomsView } from "../../web/src/App.js";
 import { BookingModal, CancelBookingModal, recurrenceLabel } from "../../web/src/components/BookingModal.js";
 import type { Booking } from "../../web/src/types.js";
 
 const room = { id: "room-1", name: "Meeting room", capacity: 10, location: "Floor 1", notes: null, amenities: [], status: "ACTIVE" as const };
 const noop = () => {};
+const ownBooking: Booking = {
+  id: "own-booking", roomId: room.id, userId: "member", startTime: "2026-10-26T09:00:00+07:00", endTime: "2026-10-26T10:00:00+07:00",
+  attendeeCount: 4, status: "CONFIRMED", canceledAt: null, room,
+  user: { id: "member", name: "Current member", email: "member@example.com" }, series: null
+};
+const otherBooking: Booking = { ...ownBooking, id: "other-booking", userId: "other-member", user: { id: "other-member", name: "Other member", email: "other@example.com" }, series: { id: "other-series", recurrenceCount: 3 } };
 
 describe("room and booking controls by role", () => {
   it.each([{ rooms: [] }, { rooms: [room] }])("never offers room management to a user, including an empty catalog: $rooms", ({ rooms }) => {
@@ -45,10 +51,38 @@ describe("room and booking controls by role", () => {
 
   it.each([false, true])("describes the correct booking scope with canManageAll=%s", (canManageAll) => {
     const markup = renderToStaticMarkup(createElement(BookingsView, {
-      bookings: [], canManageAll, search: "", statusFilter: "ALL", onSearch: noop, onStatus: noop, onCancel: noop, onCreate: noop
+      bookings: [], currentUserId: "member", canManageAll, search: "", statusFilter: "ALL", onSearch: noop, onStatus: noop, onCancel: noop, onCreate: noop
     }));
-    expect(markup).toContain(canManageAll ? "tất cả người dùng" : "của chính bạn");
-    expect(markup).toContain(canManageAll ? "Quản lý đặt phòng" : "Đặt phòng của tôi");
+    expect(markup).toContain(canManageAll ? "tất cả người dùng" : "Xem lịch đặt phòng của mọi người");
+    expect(markup).toContain(canManageAll ? "Quản lý đặt phòng" : "Lịch đặt phòng");
+    expect(markup).toContain("Đặt phòng mới");
+  });
+
+  it.each([false, true])("shows everyone's bookings but only authorized table actions with canManageAll=%s", (canManageAll) => {
+    const markup = renderToStaticMarkup(createElement(BookingsView, {
+      bookings: [ownBooking, otherBooking, { ...ownBooking, id: "cancelled-booking", status: "CANCELLED" }],
+      currentUserId: "member", canManageAll, search: "", statusFilter: "ALL", onSearch: noop, onStatus: noop, onCancel: noop, onCreate: noop, onEdit: noop
+    }));
+    const rows = markup.match(/<tr>.*?<\/tr>/g)!;
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toContain("Current member");
+    expect(rows[1]).toContain("Chỉnh sửa");
+    expect(rows[1]).toContain("Hủy đặt");
+    expect(rows[2]).toContain("Other member");
+    expect(rows[2].includes("Chỉnh sửa")).toBe(canManageAll);
+    expect(rows[2].includes("Hủy đặt")).toBe(canManageAll);
+    expect(rows[3]).not.toContain("Chỉnh sửa");
+    expect(rows[3]).not.toContain("Hủy đặt");
+  });
+
+  it.each([false, true])("shows shared upcoming meetings with restricted cancellation for canManageAll=%s", (canManageAll) => {
+    const markup = renderToStaticMarkup(createElement(Overview, {
+      rooms: [room], upcoming: [ownBooking, otherBooking], currentUserId: "member", canManageAll,
+      onCreate: noop, onNavigate: noop, onCancel: noop
+    }));
+    expect(markup).toContain("Current member");
+    expect(markup).toContain("Other member");
+    expect(markup.match(/cancel-link/g)).toHaveLength(canManageAll ? 2 : 1);
   });
 
   it("offers daily, weekly and monthly choices and previews before confirmation", () => {

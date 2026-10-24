@@ -37,12 +37,29 @@ describe("room and booking access by role", () => {
     prismaMock.$transaction.mockImplementation(async (callback) => callback(prismaMock));
   });
 
-  it("only returns the current user's bookings, even when another userId is requested", async () => {
+  it("allows a user to list everyone's bookings, regardless of department or a supplied userId", async () => {
     const response = await request(app).get("/api/bookings?userId=other-member")
       .set("authorization", `Bearer ${memberToken()}`);
     expect(response.status).toBe(200);
-    expect(response.body.bookings.map((booking: { id: string }) => booking.id)).toEqual([ownBooking.id]);
-    expect(prismaMock.booking.findMany.mock.calls[0][0].where.userId).toBe("member");
+    expect(response.body.bookings.map((booking: { id: string }) => booking.id)).toEqual([ownBooking.id, otherBooking.id]);
+    expect(prismaMock.booking.findMany.mock.calls[0][0].where).not.toHaveProperty("userId");
+    expect(prismaMock.booking.findMany.mock.calls[0][0].where).not.toHaveProperty("user");
+  });
+
+  it.each(["/api/bookings", "/api/bookings/other-booking"])("still requires authentication to read %s", async (path) => {
+    const response = await request(app).get(path);
+    expect(response.status).toBe(401);
+    expect(prismaMock.booking.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.booking.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("preserves date and status filters when a user reads the shared schedule", async () => {
+    const response = await request(app).get("/api/bookings?from=2026-10-24T00:00:00Z&to=2026-10-25T00:00:00Z&status=CONFIRMED")
+      .set("authorization", `Bearer ${memberToken()}`);
+    expect(response.status).toBe(200);
+    expect(prismaMock.booking.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      status: "CONFIRMED", startTime: { gte: new Date("2026-10-24T00:00:00Z"), lt: new Date("2026-10-25T00:00:00Z") }
+    } }));
   });
 
   it("allows an administrator to list everyone's bookings", async () => {
@@ -62,13 +79,13 @@ describe("room and booking access by role", () => {
 
   it.each([
     { role: "member", id: "own-booking", status: 200 },
-    { role: "member", id: "other-booking", status: 403 },
+    { role: "member", id: "other-booking", status: 200 },
     { role: "admin", id: "other-booking", status: 200 }
   ])("returns $status when $role opens $id", async ({ role, id, status }) => {
     const token = role === "admin" ? adminToken() : memberToken();
     const response = await request(app).get(`/api/bookings/${id}`).set("authorization", `Bearer ${token}`);
     expect(response.status).toBe(status);
-    if (status === 403) expect(response.body).not.toHaveProperty("booking");
+    expect(response.body.booking.id).toBe(id);
   });
 
   it.each([
@@ -98,10 +115,11 @@ describe("room and booking access by role", () => {
     }));
   });
 
-  it("prevents cancelling another user's series through the single-booking endpoint", async () => {
-    const response = await request(app).delete("/api/bookings/other-booking?cancelFrom=true")
+  it.each(["cancelFrom=true", "scope=THIS", "scope=FOLLOWING", "scope=ALL"])("prevents cancelling another user's booking or series with %s", async (query) => {
+    const response = await request(app).delete(`/api/bookings/other-booking?${query}`)
       .set("authorization", `Bearer ${memberToken()}`);
     expect(response.status).toBe(403);
+    expect(prismaMock.booking.update).not.toHaveBeenCalled();
     expect(prismaMock.booking.updateMany).not.toHaveBeenCalled();
   });
 
@@ -109,7 +127,9 @@ describe("room and booking access by role", () => {
     const staleToken = createToken({ id: "member", email: "member@example.com", role: "ADMIN" });
     const response = await request(app).get("/api/bookings").set("authorization", `Bearer ${staleToken}`);
     expect(response.status).toBe(200);
-    expect(response.body.bookings).toHaveLength(1);
+    expect(response.body.bookings).toHaveLength(2);
+    const bookingUpdate = await request(app).delete("/api/bookings/other-booking").set("authorization", `Bearer ${staleToken}`);
+    expect(bookingUpdate.status).toBe(403);
     const roomUpdate = await request(app).patch("/api/rooms/room-1").set("authorization", `Bearer ${staleToken}`)
       .send({ name: "Changed room" });
     expect(roomUpdate.status).toBe(403);
