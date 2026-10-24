@@ -34,11 +34,12 @@ Nếu `.env` của frontend được tải từ Vercel, thêm `VITE_API_URL="htt
 ## Quy tắc nghiệp vụ
 
 - Không cho phép hai lượt đặt giao nhau trong cùng phòng; giờ kết thúc của lượt trước có thể trùng giờ bắt đầu của lượt kế tiếp.
-- Một lượt đặt không dài quá 4 giờ và một người không đặt tổng cộng quá 4 giờ trong một ngày, tính trên tất cả phòng. Múi giờ ngày nghiệp vụ cấu hình bằng `BUSINESS_TIME_ZONE` (mặc định `Asia/Ho_Chi_Minh`).
+- Không giới hạn số giờ của mỗi lượt đặt hoặc tổng số giờ một người đặt trong ngày. Mỗi lượt đặt phải có giờ kết thúc sau giờ bắt đầu và nằm trong cùng ngày nghiệp vụ. Múi giờ ngày nghiệp vụ cấu hình bằng `BUSINESS_TIME_ZONE` (mặc định `Asia/Ho_Chi_Minh`).
 - Đặt định kỳ gồm 2–8 buổi hàng tuần. Toàn bộ buổi được kiểm tra và ghi trong một transaction; chỉ cần một buổi không hợp lệ, cả yêu cầu bị từ chối.
 - Hủy một buổi giữ lại lịch sử. Với lịch định kỳ, người dùng có thể chọn hủy riêng buổi hiện tại hoặc hủy buổi đó và tất cả buổi tiếp theo.
 - Người dùng có thể tìm phòng còn trống theo thời gian, sức chứa và tiện nghi. Lịch đặt vẫn được kiểm tra lại khi xác nhận để tránh đặt trùng.
 - Quản trị viên có thể thêm/chỉnh sửa phòng và tiện nghi, tạm ngưng/kích hoạt phòng, xem/hủy lịch của mọi người, tạo tối đa 50 tài khoản mỗi lượt, tìm/khóa/mở tài khoản, đặt lại mật khẩu và xem báo cáo sử dụng phòng.
+- Thành viên chỉ xem danh sách phòng để đặt, không được thêm/sửa/ngừng sử dụng phòng. Mục `Đặt phòng của tôi` chỉ hiển thị và cho phép quản lý lịch của chính tài khoản đó; quản trị viên có thể xem và hủy lịch của tất cả người dùng. API kiểm tra quyền cả khi truy cập trực tiếp bằng mã lịch đặt.
 - Mỗi tài khoản mới cần có bộ phận làm việc (tối đa 120 ký tự). Khi thêm hàng loạt, nhập `Tên, email, bộ phận làm việc` trên từng dòng. Quản trị viên có thể sửa bộ phận và tìm tài khoản theo tên, email hoặc bộ phận. Tài khoản cũ chưa có bộ phận hiển thị `Chưa cập nhật`.
 - Tài khoản do admin tạo dùng mật khẩu ban đầu `12345678`; tài khoản được đặt lại dùng mật khẩu ngẫu nhiên chỉ hiển thị một lần. Cả hai trường hợp đều bắt buộc đổi mật khẩu sau khi đăng nhập. Tài khoản bị khóa sẽ mất quyền truy cập ngay cả khi phiên đăng nhập cũ còn hiệu lực.
 

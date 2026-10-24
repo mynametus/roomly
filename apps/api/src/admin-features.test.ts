@@ -53,12 +53,26 @@ describe("Roomly admin features", () => {
     }));
   });
 
-  it("rejects availability requests outside booking rules", async () => {
+  it("finds available rooms for a full workday", async () => {
+    prismaMock.room.findMany.mockResolvedValue([]);
     const response = await request(app)
       .get("/api/rooms/available")
       .query({
         startTime: "2026-10-21T09:00:00+07:00",
-        endTime: "2026-10-21T14:00:00+07:00",
+        endTime: "2026-10-21T17:00:00+07:00",
+        attendeeCount: "4"
+      })
+      .set("authorization", `Bearer ${adminToken()}`);
+    expect(response.status).toBe(200);
+    expect(prismaMock.room.findMany).toHaveBeenCalled();
+  });
+
+  it("rejects availability requests with an end before the start", async () => {
+    const response = await request(app)
+      .get("/api/rooms/available")
+      .query({
+        startTime: "2026-10-21T09:00:00+07:00",
+        endTime: "2026-10-21T08:00:00+07:00",
         attendeeCount: "4"
       })
       .set("authorization", `Bearer ${adminToken()}`);

@@ -8,7 +8,7 @@ describe("business-time helpers", () => {
     expect(dates[3].toISOString()).toBe("2026-11-10T02:00:00.000Z");
   });
 
-  it("uses the configured Vietnam calendar day for daily limits", () => {
+  it("uses the configured Vietnam calendar day for booking dates", () => {
     const first = new Date("2026-10-19T17:30:00.000Z");
     const second = new Date("2026-10-20T02:30:00.000Z");
     expect(isSameBusinessDay(first, second)).toBe(true);

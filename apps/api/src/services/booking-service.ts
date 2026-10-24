@@ -1,11 +1,10 @@
 import { BookingStatus, Prisma } from "@prisma/client";
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { assertDailyLimit, validateBookingTime } from "./booking-rules.js";
+import { validateBookingTime } from "./booking-rules.js";
 import {
   createWeeklyOccurrences,
-  durationMinutes,
-  getBusinessDayBounds
+  durationMinutes
 } from "../lib/time.js";
 
 type BookingInput = {
@@ -17,18 +16,15 @@ type BookingInput = {
 
 type BookingClient = Prisma.TransactionClient;
 
-async function lockBookingResources(
+async function lockRoom(
   transaction: BookingClient,
-  userId: string,
   roomId: string
 ): Promise<void> {
   await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`room:${roomId}`}))`;
-  await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`user:${userId}`}))`;
 }
 
 async function validateOccurrence(
   transaction: BookingClient,
-  userId: string,
   input: BookingInput
 ): Promise<void> {
   const room = await transaction.room.findUnique({ where: { id: input.roomId } });
@@ -51,24 +47,13 @@ async function validateOccurrence(
   if (conflict) {
     throw new AppError("Phòng đã có lịch trong khoảng thời gian này.", 409);
   }
-
-  const bounds = getBusinessDayBounds(input.startTime);
-  const sameDayBookings = await transaction.booking.findMany({
-    where: {
-      userId,
-      status: BookingStatus.CONFIRMED,
-      startTime: { gte: bounds.start, lt: bounds.end }
-    },
-    select: { startTime: true, endTime: true }
-  });
-  assertDailyLimit(sameDayBookings, validateBookingTime(input));
 }
 
 export async function createBooking(userId: string, input: BookingInput) {
   validateBookingTime(input);
   return prisma.$transaction(async (transaction) => {
-    await lockBookingResources(transaction, userId, input.roomId);
-    await validateOccurrence(transaction, userId, input);
+    await lockRoom(transaction, input.roomId);
+    await validateOccurrence(transaction, input);
     return transaction.booking.create({
       data: { ...input, userId },
       include: { room: true, user: { select: { id: true, name: true, email: true } } }
@@ -83,7 +68,7 @@ export async function createRecurringBookings(
   validateBookingTime(input);
   const occurrences = createWeeklyOccurrences(input.startTime, input.recurrenceCount);
   return prisma.$transaction(async (transaction) => {
-    await lockBookingResources(transaction, userId, input.roomId);
+    await lockRoom(transaction, input.roomId);
     const failures: { date: string; reason: string }[] = [];
     for (const startTime of occurrences) {
       const occurrence = {
@@ -92,7 +77,7 @@ export async function createRecurringBookings(
         endTime: new Date(startTime.getTime() + durationMinutes(input.startTime, input.endTime) * 60_000)
       };
       try {
-        await validateOccurrence(transaction, userId, occurrence);
+        await validateOccurrence(transaction, occurrence);
       } catch (error) {
         if (!(error instanceof AppError)) throw error;
         failures.push({
