@@ -50,7 +50,7 @@ app.use(
 app.use(cors({
   origin: allowedFrontendOrigins()
 }));
-app.use(express.json({ limit: "32kb" }));
+app.use(express.json({ limit: "128kb" }));
 
 app.get("/api/health", (_request, response) => response.json({ status: "ok" }));
 app.use("/api/auth", authRouter);
@@ -74,6 +74,10 @@ const errorHandler: ErrorRequestHandler = (error: unknown, _request, response, _
     return;
   }
   if (typeof error === "object" && error !== null) {
+    if ("type" in error && error.type === "entity.too.large") {
+      response.status(413).json({ error: "Dữ liệu gửi lên vượt quá dung lượng cho phép." });
+      return;
+    }
     if ("type" in error && error.type === "entity.parse.failed") {
       response.status(400).json({ error: "Nội dung JSON không hợp lệ." });
       return;

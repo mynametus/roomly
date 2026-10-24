@@ -29,7 +29,7 @@ export type Booking = {
   canceledAt: string | null;
   room: Room;
   user: Pick<User, "id" | "name" | "email">;
-  series: { id: string; recurrenceCount: number } | null;
+  series: { id: string; recurrenceCount: number; recurrence?: RecurrenceRule | null } | null;
 };
 
 export type BookingInput = {
@@ -37,4 +37,31 @@ export type BookingInput = {
   startTime: string;
   endTime: string;
   attendeeCount: number;
+};
+
+export type BookingScope = "THIS" | "FOLLOWING" | "ALL";
+export type RecurrenceRule = {
+  frequency: "DAILY" | "WEEKLY" | "MONTHLY";
+  interval: number;
+  weekdays?: number[];
+  monthlyMode?: "DAY_OF_MONTH" | "WEEKDAY";
+  monthDay?: number;
+  nth?: number;
+  weekday?: number;
+  endDate?: string;
+  count?: number;
+};
+export type BookingPlan = BookingInput & {
+  recurrence?: RecurrenceRule;
+  excludedDates?: string[];
+  overrides?: { date: string; roomId?: string; startTime?: string; endTime?: string }[];
+  scope?: BookingScope;
+};
+export type BookingPreview = {
+  occurrences: (BookingInput & { id?: string; date: string; roomName: string; status: "AVAILABLE" | "CONFLICT" | "EXCLUDED"; reason?: string })[];
+  total: number;
+  availableCount: number;
+  conflictCount: number;
+  excludedCount: number;
+  canConfirm: boolean;
 };

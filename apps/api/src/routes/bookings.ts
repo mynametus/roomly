@@ -3,9 +3,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { bookingSchema, recurringBookingSchema } from "../lib/validation.js";
+import { bookingPlanSchema, bookingSchema, bookingScopeSchema, bookingUpdateSchema, recurringBookingSchema } from "../lib/validation.js";
 import { type AuthenticatedRequest } from "../middleware/auth.js";
-import { cancelBooking, createBooking, createRecurringBookings } from "../services/booking-service.js";
+import { cancelBooking, createBooking, createRecurringBookings, previewBookings, previewBookingUpdate, updateBooking } from "../services/booking-service.js";
 
 export const bookingsRouter = Router();
 
@@ -27,7 +27,7 @@ bookingsRouter.get("/", async (request, response) => {
     include: {
       room: true,
       user: { select: { id: true, name: true, email: true } },
-      series: { select: { id: true, recurrenceCount: true } }
+      series: { select: { id: true, recurrenceCount: true, recurrence: true } }
     },
     orderBy: { startTime: "asc" }
   });
@@ -43,7 +43,7 @@ bookingsRouter.get("/:id", async (request, response) => {
     include: {
       room: true,
       user: { select: { id: true, name: true, email: true } },
-      series: { select: { id: true, recurrenceCount: true } }
+      series: { select: { id: true, recurrenceCount: true, recurrence: true } }
     }
   });
   if (!booking) throw new AppError("Không tìm thấy lượt đặt.", 404);
@@ -67,11 +67,30 @@ bookingsRouter.post("/recurring", async (request, response) => {
   response.status(201).json({ bookings });
 });
 
+bookingsRouter.post("/preview", async (request, response) => {
+  response.json(await previewBookings(bookingPlanSchema.parse(request.body)));
+});
+
+bookingsRouter.post("/:id/preview", async (request, response) => {
+  const bookingId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
+  if (!bookingId) throw new AppError("Thiếu mã lượt đặt.");
+  const user = (request as AuthenticatedRequest).user!;
+  response.json(await previewBookingUpdate(bookingId, user.id, user.role === "ADMIN", bookingUpdateSchema.parse(request.body)));
+});
+
+bookingsRouter.patch("/:id", async (request, response) => {
+  const bookingId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
+  if (!bookingId) throw new AppError("Thiếu mã lượt đặt.");
+  const user = (request as AuthenticatedRequest).user!;
+  response.json({ bookings: await updateBooking(bookingId, user.id, user.role === "ADMIN", bookingUpdateSchema.parse(request.body)) });
+});
+
 bookingsRouter.delete("/:id", async (request, response) => {
   const user = (request as AuthenticatedRequest).user!;
   const bookingId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
   if (!bookingId) throw new AppError("Thiếu mã lượt đặt.");
   const cancelFrom = z.enum(["true", "false"]).default("false").parse(request.query.cancelFrom) === "true";
-  const booking = await cancelBooking(bookingId, user.id, user.role === "ADMIN", cancelFrom);
-  response.json({ booking, message: cancelFrom ? "Đã hủy buổi này và các buổi tiếp theo." : "Đã hủy lượt đặt." });
+  const scope = bookingScopeSchema.parse(request.query.scope ?? (cancelFrom ? "FOLLOWING" : "THIS"));
+  const booking = await cancelBooking(bookingId, user.id, user.role === "ADMIN", scope);
+  response.json({ booking, message: scope === "ALL" ? "Đã hủy toàn bộ chuỗi." : scope === "FOLLOWING" ? "Đã hủy buổi này và các buổi tiếp theo." : "Đã hủy lượt đặt." });
 });

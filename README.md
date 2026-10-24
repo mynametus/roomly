@@ -35,8 +35,9 @@ Nếu `.env` của frontend được tải từ Vercel, thêm `VITE_API_URL="htt
 
 - Không cho phép hai lượt đặt giao nhau trong cùng phòng; giờ kết thúc của lượt trước có thể trùng giờ bắt đầu của lượt kế tiếp.
 - Không giới hạn số giờ của mỗi lượt đặt hoặc tổng số giờ một người đặt trong ngày. Mỗi lượt đặt phải có giờ kết thúc sau giờ bắt đầu và nằm trong cùng ngày nghiệp vụ. Múi giờ ngày nghiệp vụ cấu hình bằng `BUSINESS_TIME_ZONE` (mặc định `Asia/Ho_Chi_Minh`).
-- Đặt định kỳ gồm 2–8 buổi hàng tuần. Toàn bộ buổi được kiểm tra và ghi trong một transaction; chỉ cần một buổi không hợp lệ, cả yêu cầu bị từ chối.
-- Hủy một buổi giữ lại lịch sử. Với lịch định kỳ, người dùng có thể chọn hủy riêng buổi hiện tại hoặc hủy buổi đó và tất cả buổi tiếp theo.
+- Lịch họp có thể đặt một lần hoặc lặp hàng ngày, hàng tuần (chọn nhiều thứ), hàng tháng theo ngày hoặc thứ thứ n/cuối tháng. Chuỗi cần ngày kết thúc hoặc số buổi, tối đa 6 tháng và 200 buổi; tháng không có ngày 29–31 đã chọn sẽ được bỏ qua.
+- Trước khi xác nhận, xem trước danh sách các buổi và xung đột. Có thể bỏ riêng một ngày hoặc đổi phòng/giờ cho ngày đó rồi kiểm tra lại. Khi lưu, hệ thống kiểm tra lại toàn bộ các buổi được giữ và ghi trong một transaction; chỉ cần một buổi không hợp lệ, không có buổi nào được lưu.
+- Sửa/hủy lịch định kỳ có ba phạm vi: chỉ buổi này, buổi này và các buổi sau, hoặc toàn bộ chuỗi. Khi sửa nhiều buổi, phòng/giờ/số người mới được áp dụng và ngày của từng buổi được giữ nguyên; các buổi đã hủy không được khôi phục. Lịch hủy vẫn được giữ trong lịch sử.
 - Người dùng có thể tìm phòng còn trống theo thời gian, sức chứa và tiện nghi. Lịch đặt vẫn được kiểm tra lại khi xác nhận để tránh đặt trùng.
 - Quản trị viên có thể thêm/chỉnh sửa phòng và tiện nghi, tạm ngưng/kích hoạt phòng, xem/hủy lịch của mọi người, tạo tối đa 50 tài khoản mỗi lượt, tìm/khóa/mở tài khoản, đặt lại mật khẩu và xem báo cáo sử dụng phòng.
 - Thành viên chỉ xem danh sách phòng để đặt, không được thêm/sửa/ngừng sử dụng phòng. Mục `Đặt phòng của tôi` chỉ hiển thị và cho phép quản lý lịch của chính tài khoản đó; quản trị viên có thể xem và hủy lịch của tất cả người dùng. API kiểm tra quyền cả khi truy cập trực tiếp bằng mã lịch đặt.

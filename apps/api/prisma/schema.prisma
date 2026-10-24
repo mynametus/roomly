@@ -52,6 +52,7 @@ model BookingSeries {
   id              String    @id @default(cuid())
   userId          String
   recurrenceCount Int
+  recurrence      Json?
   createdAt       DateTime  @default(now())
   user            User      @relation(fields: [userId], references: [id], onDelete: Restrict)
   bookings        Booking[]

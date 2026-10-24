@@ -5,7 +5,8 @@ const prismaMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
   room: { findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
   booking: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-  $transaction: vi.fn()
+  $transaction: vi.fn(),
+  $queryRaw: vi.fn()
 }));
 vi.mock("./lib/prisma.js", () => ({ prisma: prismaMock }));
 
@@ -48,6 +49,15 @@ describe("room and booking access by role", () => {
     const response = await request(app).get("/api/bookings").set("authorization", `Bearer ${adminToken()}`);
     expect(response.status).toBe(200);
     expect(response.body.bookings).toHaveLength(2);
+  });
+
+  it.each(["/api/bookings/other-booking", "/api/bookings/other-booking/preview"])("prevents a user editing or previewing another user's booking: %s", async (path) => {
+    const operation = path.endsWith("preview") ? request(app).post(path) : request(app).patch(path);
+    const response = await operation.set("authorization", `Bearer ${memberToken()}`).send({
+      roomId: "room-1", startTime: "2026-10-24T09:00:00+07:00", endTime: "2026-10-24T10:00:00+07:00", attendeeCount: 4, scope: "ALL"
+    });
+    expect(response.status).toBe(403);
+    expect(prismaMock.booking.update).not.toHaveBeenCalled();
   });
 
   it.each([

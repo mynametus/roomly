@@ -4,8 +4,8 @@ const { prismaMock, transactionMock } = vi.hoisted(() => ({
   prismaMock: { $transaction: vi.fn() },
   transactionMock: {
     $queryRaw: vi.fn(),
-    room: { findUnique: vi.fn() },
-    booking: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    room: { findUnique: vi.fn(), findMany: vi.fn() },
+    booking: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
     bookingSeries: { create: vi.fn() }
   }
 }));
@@ -38,16 +38,21 @@ describe("booking duration without daily limits", () => {
     transactionMock.room.findUnique.mockImplementation(async ({ where }) => ({
       id: where.id, name: "Meeting room", status: "ACTIVE", capacity: 10
     }));
+    transactionMock.room.findMany.mockImplementation(async ({ where }) => where.id.in.map((id: string) => ({ id, name: "Meeting room", status: "ACTIVE", capacity: 10 })));
     transactionMock.booking.findFirst.mockImplementation(async ({ where }) => saved.find((booking) =>
       booking.roomId === where.roomId && booking.startTime < where.startTime.lt && booking.endTime > where.endTime.gt
     ) ?? null);
     transactionMock.booking.findMany.mockImplementation(async ({ where }) => saved.filter((booking) =>
-      booking.userId === where.userId && booking.startTime >= where.startTime.gte && booking.startTime < where.startTime.lt
+      where.seriesId ? booking.seriesId === where.seriesId : where.roomId.in.includes(booking.roomId) && booking.startTime < where.startTime.lt && booking.endTime > where.endTime.gt
     ));
     transactionMock.booking.create.mockImplementation(async ({ data }) => {
       const booking = { ...data, id: `booking-${saved.length + 1}` };
       saved.push(booking);
       return booking;
+    });
+    transactionMock.booking.createMany.mockImplementation(async ({ data }) => {
+      for (const row of data) saved.push({ ...row, id: `booking-${saved.length + 1}` });
+      return { count: data.length };
     });
     transactionMock.bookingSeries.create.mockResolvedValue({ id: "series-1" });
   });

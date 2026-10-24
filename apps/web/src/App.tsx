@@ -9,7 +9,10 @@ import {
 import { vi } from "date-fns/locale";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "./api";
-import type { Booking, BookingInput, Room, User } from "./types";
+import type { Booking, BookingInput, BookingPlan, BookingPreview, BookingScope, Room, User } from "./types";
+import { BookingModal, CancelBookingModal, recurrenceLabel } from "./components/BookingModal";
+import { Modal } from "./components/Modal";
+import { RoomNotes } from "./components/RoomNotes";
 
 type AuthResponse = { user: User; token: string };
 type View = "overview" | "availability" | "calendar" | "bookings" | "rooms" | "users" | "reports";
@@ -33,6 +36,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [showBooking, setShowBooking] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [bookingDefaults, setBookingDefaults] = useState<Partial<BookingInput>>();
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [showZaloContact, setShowZaloContact] = useState(false);
@@ -124,55 +129,40 @@ export default function App() {
     setCreatedAccounts([]);
     setView("overview");
     setShowBooking(false);
+    setEditingBooking(null);
+    setCancelTarget(null);
     setShowRoomForm(false);
     setEditingRoom(null);
     setSearch("");
     setStatusFilter("ALL");
   }
 
-  async function submitBooking(input: BookingInput, recurrenceCount: number) {
-    if (!token) return;
+  async function submitBooking(input: BookingPlan) {
+    if (!token) throw new Error("Vui lòng đăng nhập lại.");
     try {
-      if (recurrenceCount > 1) {
-        await api("/api/bookings/recurring", {
-          method: "POST",
-          body: JSON.stringify({ ...input, recurrenceCount })
-        }, token);
-      } else {
-        await api("/api/bookings", { method: "POST", body: JSON.stringify(input) }, token);
-      }
-      setShowBooking(false);
-      setNotice({ kind: "success", text: recurrenceCount > 1 ? "Đã đặt lịch định kỳ thành công." : "Đã tạo lượt đặt phòng." });
+      const endpoint = editingBooking ? `/api/bookings/${encodeURIComponent(editingBooking.id)}` : input.recurrence ? "/api/bookings/recurring" : "/api/bookings";
+      await api(endpoint, { method: editingBooking ? "PATCH" : "POST", body: JSON.stringify(input) }, token);
+      setShowBooking(false); setEditingBooking(null);
+      setNotice({ kind: "success", text: editingBooking ? "Đã cập nhật lịch đặt phòng." : input.recurrence ? "Đã tạo chuỗi lịch họp." : "Đã tạo lượt đặt phòng." });
       await refresh();
-    } catch (error) {
-      handleError(error);
-    }
+    } catch (error) { handleError(error); throw error; }
   }
 
-  async function cancel(booking: Booking, fromHere: boolean) {
-    if (!token) return;
-    let cancelRemaining = false;
-    if (fromHere && booking.series) {
-      cancelRemaining = window.confirm(
-        "Hủy buổi này và toàn bộ các buổi tiếp theo trong chuỗi? Chọn Hủy để chỉ hủy buổi này."
-      );
-    } else if (!window.confirm("Bạn có chắc muốn hủy lượt đặt này?")) {
-      return;
-    }
+  async function previewBooking(input: BookingPlan) {
+    if (!token) throw new Error("Vui lòng đăng nhập lại.");
+    try { return await api<BookingPreview>(editingBooking ? `/api/bookings/${encodeURIComponent(editingBooking.id)}/preview` : "/api/bookings/preview", { method: "POST", body: JSON.stringify(input) }, token); }
+    catch (error) { handleError(error); throw error; }
+  }
+
+  function cancel(booking: Booking, _fromHere: boolean) { setCancelTarget(booking); }
+
+  async function confirmCancellation(scope: BookingScope) {
+    if (!token || !cancelTarget) throw new Error("Vui lòng đăng nhập lại.");
     try {
-      if (cancelRemaining && booking.series) {
-        await api(`/api/booking-series/${encodeURIComponent(booking.series.id)}/cancel-from`, {
-          method: "POST",
-          body: JSON.stringify({ bookingId: booking.id })
-        }, token);
-      } else {
-        await api(`/api/bookings/${encodeURIComponent(booking.id)}`, { method: "DELETE" }, token);
-      }
-      setNotice({ kind: "success", text: "Đã hủy lượt đặt." });
+      await api(`/api/bookings/${encodeURIComponent(cancelTarget.id)}?scope=${scope}`, { method: "DELETE" }, token);
+      setCancelTarget(null); setNotice({ kind: "success", text: "Đã hủy lịch theo phạm vi đã chọn." });
       await refresh();
-    } catch (error) {
-      handleError(error);
-    }
+    } catch (error) { handleError(error); throw error; }
   }
 
   async function saveRoom(input: Omit<Room, "id">, roomId?: string) {
@@ -209,7 +199,15 @@ export default function App() {
   }
 
   function openBooking(defaults?: Partial<BookingInput>) {
+    setEditingBooking(null);
     setBookingDefaults(defaults);
+    setShowBooking(true);
+  }
+
+  function openBookingEdit(booking: Booking) {
+    if (!isAdmin && booking.userId !== user?.id) return;
+    setEditingBooking(booking);
+    setBookingDefaults({ roomId: booking.roomId, startTime: booking.startTime, endTime: booking.endTime, attendeeCount: booking.attendeeCount });
     setShowBooking(true);
   }
 
@@ -363,6 +361,7 @@ export default function App() {
                   onSearch={setSearch}
                   onStatus={setStatusFilter}
                   onCancel={cancel}
+                  onEdit={openBookingEdit}
                   onCreate={() => openBooking()}
                 />
               )}
@@ -392,7 +391,8 @@ export default function App() {
       </main>
 
       {notice && <div role="status" className={`toast ${notice.kind}`}><span>{notice.kind === "success" ? <Check size={17} /> : <AlertCircle size={17} />}</span>{notice.text}<button onClick={() => setNotice(null)} aria-label="Đóng"><X size={16} /></button></div>}
-      {showBooking && <BookingModal rooms={rooms} initialValues={bookingDefaults} onClose={() => setShowBooking(false)} onSubmit={submitBooking} />}
+      {showBooking && <BookingModal key={editingBooking?.id ?? "new"} rooms={rooms} initialValues={bookingDefaults} editing={editingBooking} onClose={() => { setShowBooking(false); setEditingBooking(null); }} onPreview={previewBooking} onSubmit={submitBooking} />}
+      {cancelTarget && <CancelBookingModal booking={cancelTarget} onClose={() => setCancelTarget(null)} onSubmit={confirmCancellation} />}
       {showRoomForm && isAdmin && <RoomModal onClose={() => setShowRoomForm(false)} onSubmit={saveRoom} />}
       {editingRoom && isAdmin && <RoomModal room={editingRoom} onClose={() => setEditingRoom(null)} onSubmit={saveRoom} />}
       {showZaloContact && <Modal title="Liên hệ hỗ trợ qua Zalo" subtitle="Kết bạn để được quản trị viên hỗ trợ." onClose={() => setShowZaloContact(false)}>
@@ -544,7 +544,7 @@ function Overview({ rooms, upcoming, onCreate, onNavigate, onCancel }: {
           <button className="quick-action" onClick={onCreate}><span className="quick-icon lavender"><Plus size={18} /></span><span><strong>Đặt phòng họp</strong><small>Tìm phòng và chọn thời gian</small></span><ArrowRight size={16} /></button>
           <button className="quick-action" onClick={() => onNavigate("calendar")}><span className="quick-icon mint"><CalendarDays size={18} /></span><span><strong>Xem lịch phòng</strong><small>Kiểm tra phòng còn trống</small></span><ArrowRight size={16} /></button>
           <button className="quick-action" onClick={() => onNavigate("rooms")}><span className="quick-icon peach"><DoorOpen size={18} /></span><span><strong>Khám phá phòng</strong><small>{activeRooms} phòng sẵn sàng</small></span><ArrowRight size={16} /></button>
-          <div className="tip-box"><span className="tip-symbol">✳</span><span><strong>Mẹo nhỏ</strong> Bạn có thể đặt định kỳ hàng tuần tối đa 8 buổi.</span></div>
+          <div className="tip-box"><span className="tip-symbol">✳</span><span><strong>Mẹo nhỏ</strong> Bạn có thể đặt lịch họp lặp lại hàng ngày, hàng tuần hoặc hàng tháng.</span></div>
         </div>
       </section>
     </>
@@ -597,19 +597,22 @@ function CalendarView({ bookings, week, rooms, onWeekChange, onCreate }: {
   );
 }
 
-export function BookingsView({ bookings, canManageAll, search, statusFilter, onSearch, onStatus, onCancel, onCreate }: {
+export function BookingsView({ bookings, canManageAll, search, statusFilter, onSearch, onStatus, onCancel, onCreate, onEdit }: {
   bookings: Booking[]; canManageAll: boolean; search: string; statusFilter: string; onSearch: (value: string) => void;
-  onStatus: (value: string) => void; onCancel: (booking: Booking, fromHere: boolean) => void; onCreate: () => void;
+  onStatus: (value: string) => void; onCancel: (booking: Booking, fromHere: boolean) => void; onCreate: () => void; onEdit?: (booking: Booking) => void;
 }) {
-  return (
-    <>
-      <PageHeading eyebrow="QUẢN LÝ LỊCH" title={canManageAll ? "Quản lý đặt phòng" : "Đặt phòng của tôi"} description={canManageAll ? "Tìm kiếm, theo dõi và quản lý lượt đặt phòng của tất cả người dùng." : "Tìm kiếm, theo dõi và quản lý các lượt đặt phòng của chính bạn."} action={<button className="button button-primary" onClick={onCreate}><Plus size={17} /> Đặt phòng mới</button>} />
-      <div className="panel table-panel">
-        <div className="table-toolbar"><div className="search-field"><Search size={17} /><input aria-label="Tìm phòng hoặc người đặt" placeholder="Tìm phòng, người đặt..." value={search} onChange={(event) => onSearch(event.target.value)} /></div><select aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => onStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="CONFIRMED">Đã xác nhận</option><option value="CANCELLED">Đã hủy</option></select></div>
-        {bookings.length ? <div className="table-wrap"><table><thead><tr><th>PHÒNG HỌP</th><th>NGƯỜI ĐẶT</th><th>NGÀY & GIỜ</th><th>SỐ NGƯỜI</th><th>TRẠNG THÁI</th><th /></tr></thead><tbody>{bookings.map((booking) => <tr key={booking.id}><td><strong>{booking.room.name}</strong><small>{booking.room.location}</small></td><td><strong>{booking.user.name}</strong><small>{booking.user.email}</small></td><td><strong>{prettyDate(booking.startTime, { day: "numeric", month: "short", year: "numeric" })}</strong><small>{clock(booking.startTime)} – {clock(booking.endTime)}{booking.series && ` · Định kỳ (${booking.series.recurrenceCount})`}</small></td><td>{booking.attendeeCount} người</td><td><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span></td><td>{booking.status === "CONFIRMED" && <button className="table-action" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy đặt</button>}</td></tr>)}</tbody></table></div> : <EmptyState title="Không tìm thấy lượt đặt" text="Thử thay đổi bộ lọc hoặc tạo một lượt đặt mới." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
-      </div>
-    </>
-  );
+  return <>
+    <PageHeading eyebrow="QUẢN LÝ LỊCH" title={canManageAll ? "Quản lý đặt phòng" : "Đặt phòng của tôi"} description={canManageAll ? "Tìm kiếm, theo dõi và quản lý lượt đặt phòng của tất cả người dùng." : "Tìm kiếm, theo dõi và quản lý các lượt đặt phòng của chính bạn."} action={<button className="button button-primary" onClick={onCreate}><Plus size={17} /> Đặt phòng mới</button>} />
+    <div className="panel table-panel">
+      <div className="table-toolbar"><div className="search-field"><Search size={17} /><input aria-label="Tìm phòng hoặc người đặt" placeholder="Tìm phòng, người đặt..." value={search} onChange={(event) => onSearch(event.target.value)} /></div><select aria-label="Lọc trạng thái" value={statusFilter} onChange={(event) => onStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="CONFIRMED">Đã xác nhận</option><option value="CANCELLED">Đã hủy</option></select></div>
+      {bookings.length ? <div className="table-wrap"><table><thead><tr><th>PHÒNG HỌP</th><th>NGƯỜI ĐẶT</th><th>NGÀY & GIỜ</th><th>SỐ NGƯỜI</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead><tbody>{bookings.map((booking) => <tr key={booking.id}>
+        <td><strong>{booking.room.name}</strong><small>{booking.room.location}</small></td><td><strong>{booking.user.name}</strong><small>{booking.user.email}</small></td>
+        <td><strong>{prettyDate(booking.startTime, { day: "numeric", month: "short", year: "numeric" })}</strong><small>{clock(booking.startTime)} – {clock(booking.endTime)}</small>{booking.series && <small>{recurrenceLabel(booking)}</small>}</td>
+        <td>{booking.attendeeCount} người</td><td><span className={`status-pill ${booking.status === "CONFIRMED" ? "confirmed" : "cancelled"}`}>{booking.status === "CONFIRMED" ? "Đã xác nhận" : "Đã hủy"}</span></td>
+        <td>{booking.status === "CONFIRMED" && <div className="booking-actions">{onEdit && <button className="table-action" onClick={() => onEdit(booking)}>Chỉnh sửa</button>}<button className="table-action" onClick={() => onCancel(booking, Boolean(booking.series))}>Hủy đặt</button></div>}</td>
+      </tr>)}</tbody></table></div> : <EmptyState title="Không tìm thấy lượt đặt" text="Thử thay đổi bộ lọc hoặc tạo một lượt đặt mới." action={<button className="button button-outline button-small" onClick={onCreate}><Plus size={15} /> Đặt phòng</button>} />}
+    </div>
+  </>;
 }
 
 const roomAmenityOptions = [
@@ -694,11 +697,6 @@ function AvailabilityView({ onSearch, amenities, onBook, onError }: {
 function AmenityBadges({ amenities }: { amenities: string[] }) {
   if (!amenities.length) return <p className="amenity-empty">Chưa khai báo tiện nghi.</p>;
   return <div className="amenity-badges">{amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div>;
-}
-
-function RoomNotes({ notes }: { notes: Room["notes"] }) {
-  if (!notes) return null;
-  return <div className="room-notes"><strong>Ghi chú</strong><p>{notes}</p></div>;
 }
 
 export function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
@@ -1048,42 +1046,6 @@ function EmptyState({ title, text, action }: { title: string; text: string; acti
   return <div className="empty-state"><span className="empty-icon"><CalendarDays size={21} /></span><strong>{title}</strong><p>{text}</p>{action}</div>;
 }
 
-function BookingModal({ rooms, initialValues, onClose, onSubmit }: {
-  rooms: Room[]; initialValues?: Partial<BookingInput>; onClose: () => void;
-  onSubmit: (input: BookingInput, recurrence: number) => void;
-}) {
-  const activeRooms = rooms.filter((room) => room.status === "ACTIVE");
-  const [selectedRoomId, setSelectedRoomId] = useState(initialValues?.roomId ?? "");
-  const selectedRoom = activeRooms.find((room) => room.id === selectedRoomId);
-  const [recurrence, setRecurrence] = useState("1");
-  const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const startTime = new Date(String(form.get("date")) + "T" + String(form.get("start"))).toISOString();
-    const endTime = new Date(String(form.get("date")) + "T" + String(form.get("end"))).toISOString();
-    setBusy(true);
-    await onSubmit({
-      roomId: String(form.get("roomId")),
-      startTime,
-      endTime,
-      attendeeCount: Number(form.get("attendeeCount"))
-    }, Number(recurrence));
-    setBusy(false);
-  }
-  const initialDate = initialValues?.startTime ? format(new Date(initialValues.startTime), "yyyy-MM-dd") : today();
-  const initialStart = initialValues?.startTime ? format(new Date(initialValues.startTime), "HH:mm") : "09:00";
-  const initialEnd = initialValues?.endTime ? format(new Date(initialValues.endTime), "HH:mm") : "10:00";
-  return <Modal title="Đặt phòng họp" subtitle="Điền thông tin để giữ chỗ cho cuộc họp." onClose={onClose}><form className="form-stack" onSubmit={submit}>
-    <label>Phòng họp<select name="roomId" required value={selectedRoomId} onChange={(event) => setSelectedRoomId(event.target.value)}><option value="" disabled>Chọn phòng</option>{activeRooms.map((room) => <option key={room.id} value={room.id}>{room.name} · {room.location} · {room.capacity} chỗ</option>)}</select></label>
-    <RoomNotes notes={selectedRoom?.notes ?? null} />
-    <label>Ngày họp<input name="date" type="date" required min={today()} defaultValue={initialDate} /></label>
-    <div className="form-row"><label>Giờ bắt đầu<input name="start" type="time" required defaultValue={initialStart} /></label><label>Giờ kết thúc<input name="end" type="time" required defaultValue={initialEnd} /></label></div>
-    <div className="form-row"><label>Số người tham dự<input name="attendeeCount" type="number" required min="1" max="500" defaultValue={initialValues?.attendeeCount ?? 4} /></label><label>Hình thức đặt<select value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option value="1">Một lần</option><option value="2">2 buổi hàng tuần</option><option value="3">3 buổi hàng tuần</option><option value="4">4 buổi hàng tuần</option><option value="5">5 buổi hàng tuần</option><option value="6">6 buổi hàng tuần</option><option value="7">7 buổi hàng tuần</option><option value="8">8 buổi hàng tuần</option></select></label></div>
-    <p className="form-hint"><Clock3 size={14} /> Không giới hạn tổng thời gian đặt trong ngày. Thời gian theo múi giờ thiết bị.</p>
-    <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy || activeRooms.length === 0}>{busy ? "Đang lưu…" : "Xác nhận đặt phòng"} <ArrowRight size={16} /></button></div>
-  </form></Modal>;
-}
 
 function RoomModal({ room, onClose, onSubmit }: {
   room?: Room; onClose: () => void; onSubmit: (room: Omit<Room, "id">, roomId?: string) => void;
@@ -1111,13 +1073,4 @@ function RoomModal({ room, onClose, onSubmit }: {
     <label>Ghi chú (không bắt buộc)<textarea className="room-notes-input" name="notes" rows={3} maxLength={2000} defaultValue={room?.notes ?? ""} placeholder="Ví dụ: Liên hệ lễ tân để lấy chìa khóa; sắp xếp lại bàn ghế sau khi sử dụng." /><span className="form-hint">Tối đa 2.000 ký tự. Có thể để trống.</span></label>
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Hủy</button><button className="button button-primary" disabled={busy}>{busy ? "Đang lưu…" : room ? "Lưu thay đổi" : "Thêm phòng"} <ArrowRight size={16} /></button></div>
   </form></Modal>;
-}
-
-function Modal({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: ReactNode }) {
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="modal-title" className="modal-card"><div className="modal-heading"><div><h2 id="modal-title">{title}</h2><p>{subtitle}</p></div><button className="icon-button" aria-label="Đóng" onClick={onClose}><X size={19} /></button></div>{children}</section></div>;
 }

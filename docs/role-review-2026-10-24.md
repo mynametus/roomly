@@ -53,7 +53,7 @@ Các kiểm tra trùng lịch trong cùng phòng, phòng đang hoạt động, s
 - Tại thời điểm rà soát, chuỗi kết nối chứa credential; kiểm tra trong bộ nhớ xác nhận credential và host khớp database đang cấu hình ở `apps/api/.env`.
 - Không có credential nào được chép vào báo cáo này. Chưa xác minh repository công khai hay những ai đã truy cập lịch sử Git.
 - Cần thay giá trị trong file mẫu bằng placeholder và thay/thu hồi credential đã đưa vào Git, đồng thời cập nhật cấu hình ứng dụng sử dụng credential đó. Chỉ sửa file hiện tại không xóa credential khỏi lịch sử Git.
-- Cập nhật sau rà soát: file mẫu đã được thay bằng placeholder và quét lại các file Git theo dõi không còn thấy mật khẩu database trong nội dung hiện tại. Việc thu hồi credential tại nhà cung cấp đang chờ xác thực tài khoản Prisma; chưa được đánh dấu hoàn tất.
+- Cập nhật sau rà soát: file mẫu đã được thay bằng placeholder và quét lại các file Git theo dõi không còn thấy mật khẩu database trong nội dung hiện tại. Đã tạo credential mới, chuyển local/production và thu hồi credential cũ tại Prisma; xem [biên bản thay credential](database-credential-rotation.md).
 
 ### 2. Cao — đổi mật khẩu không thu hồi token đã phát hành
 
@@ -80,7 +80,7 @@ Các kiểm tra trùng lịch trong cùng phòng, phòng đang hoạt động, s
 ## Các giới hạn chức năng cần biết
 
 - Chưa có xóa hẳn phòng; hiện admin có thể ngừng sử dụng để giữ lịch sử.
-- Chưa có chỉnh sửa giờ/phòng của một lịch đã tạo; hiện thao tác quản lý là xem và hủy, rồi đặt lại khi cần.
+- Cập nhật sau rà soát: đã bổ sung chỉnh sửa giờ/phòng/số người cho một buổi, buổi đó và các buổi sau, hoặc toàn bộ chuỗi, kèm xem trước và kiểm tra xung đột; xem [ghi nhận triển khai lịch định kỳ](recurring-bookings-implementation.md).
 - Chưa có phân trang danh sách tài khoản/lịch đặt; khi dữ liệu tăng, cần kiểm tra hiệu năng và bổ sung phân trang.
 - Chưa có cơ chế giới hạn số lần thử đăng nhập ở tầng ứng dụng trong mã nguồn hiện tại; chưa kiểm tra cấu hình bảo vệ ở hạ tầng Vercel.
 

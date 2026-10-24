@@ -26,9 +26,42 @@ export const bookingSchema = z.object({
   attendeeCount: z.number().int().positive().max(500)
 });
 
-export const recurringBookingSchema = bookingSchema.extend({
-  recurrenceCount: z.number().int().min(2).max(8)
+export const recurrenceRuleSchema = z.object({
+  frequency: z.enum(["DAILY", "WEEKLY", "MONTHLY"]),
+  interval: z.number().int().min(1).max(12).default(1),
+  weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+  monthlyMode: z.enum(["DAY_OF_MONTH", "WEEKDAY"]).optional(),
+  monthDay: z.number().int().min(1).max(31).optional(),
+  nth: z.union([z.literal(-1), z.number().int().min(1).max(4)]).optional(),
+  weekday: z.number().int().min(0).max(6).optional(),
+  endDate: z.iso.date().optional(),
+  count: z.number().int().min(1).max(200).optional()
+}).superRefine((rule, context) => {
+  if (Boolean(rule.endDate) === Boolean(rule.count)) context.addIssue({ code: "custom", path: ["endDate"], message: "Chọn ngày kết thúc hoặc số buổi họp." });
+  if (rule.frequency === "WEEKLY" && !rule.weekdays?.length) context.addIssue({ code: "custom", path: ["weekdays"], message: "Chọn ít nhất một thứ trong tuần." });
+  if (rule.frequency === "MONTHLY" && rule.monthlyMode === "WEEKDAY" && (rule.nth === undefined || rule.weekday === undefined)) context.addIssue({ code: "custom", path: ["weekday"], message: "Chọn thứ và tuần trong tháng." });
 });
+
+const occurrenceOverrideSchema = z.object({
+  date: z.iso.date(),
+  roomId: z.string().min(1).optional(),
+  startTime: z.iso.datetime({ offset: true }).transform((value) => new Date(value)).optional(),
+  endTime: z.iso.datetime({ offset: true }).transform((value) => new Date(value)).optional()
+});
+
+export const bookingPlanSchema = bookingSchema.extend({
+  recurrence: recurrenceRuleSchema.optional(),
+  recurrenceCount: z.number().int().min(2).max(8).optional(),
+  excludedDates: z.array(z.iso.date()).max(200).default([]),
+  overrides: z.array(occurrenceOverrideSchema).max(200).default([])
+}).superRefine((input, context) => {
+  if (input.recurrence && input.recurrenceCount) context.addIssue({ code: "custom", path: ["recurrence"], message: "Chỉ sử dụng một cấu hình lịch lặp lại." });
+  if (!input.recurrence && !input.recurrenceCount && (input.excludedDates.length || input.overrides.length)) context.addIssue({ code: "custom", path: ["overrides"], message: "Chỉ áp dụng ngoại lệ cho chuỗi định kỳ." });
+});
+
+export const recurringBookingSchema = bookingPlanSchema.refine((input) => input.recurrence || input.recurrenceCount, { message: "Cần cấu hình lịch lặp lại." });
+export const bookingScopeSchema = z.enum(["THIS", "FOLLOWING", "ALL"]);
+export const bookingUpdateSchema = bookingSchema.extend({ scope: bookingScopeSchema.default("THIS") });
 
 const roomFields = z.object({
   name: z.string().trim().min(2).max(80),
