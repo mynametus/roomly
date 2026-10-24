@@ -22,6 +22,7 @@ const user = {
   id: "bulk-user",
   name: "Bulk User",
   email: "bulk-user@example.com",
+  department: "Kế toán",
   role: "USER" as const,
   mustChangePassword: true,
   isActive: true
@@ -48,6 +49,7 @@ describe("initial password flow", () => {
           expect(data).toHaveLength(1);
           expect(data[0].role).toBe("USER");
           expect(data[0].mustChangePassword).toBe(true);
+          expect(data[0].department).toBe(user.department);
           expect(await bcrypt.compare("12345678", data[0].passwordHash)).toBe(true);
           return { count: 1 };
         })
@@ -58,10 +60,10 @@ describe("initial password flow", () => {
     const response = await request(app)
       .post("/api/users/bulk")
       .set("authorization", `Bearer ${token}`)
-      .send({ users: [{ name: user.name, email: user.email }] });
+      .send({ users: [{ name: user.name, email: user.email, department: `  ${user.department}  ` }] });
 
     expect(response.status).toBe(201);
-    expect(response.body.created).toEqual([{ name: user.name, email: user.email }]);
+    expect(response.body.created).toEqual([{ name: user.name, email: user.email, department: user.department }]);
   });
 
   it("marks the login session as restricted for an initial-password account", async () => {
@@ -79,6 +81,7 @@ describe("initial password flow", () => {
 
     expect(login.status).toBe(200);
     expect(login.body.user.mustChangePassword).toBe(true);
+    expect(login.body.user.department).toBe(user.department);
     expect(protectedRequest.status).toBe(403);
   });
 
@@ -100,6 +103,7 @@ describe("initial password flow", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.user.mustChangePassword).toBe(false);
+    expect(response.body.user.department).toBe(user.department);
     expect(response.body.token).toEqual(expect.any(String));
     const update = prismaMock.user.update.mock.calls[0][0];
     expect(update.data.mustChangePassword).toBe(false);

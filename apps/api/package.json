@@ -10,7 +10,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "tsx prisma/seed.ts --reset",
+    "db:inspect": "tsx prisma/seed.ts --inspect"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",

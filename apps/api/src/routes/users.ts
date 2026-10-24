@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { AppError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAdmin, type AuthenticatedRequest } from "../middleware/auth.js";
-import { bulkUsersSchema, userStatusSchema } from "../lib/validation.js";
+import { bulkUsersSchema, userDepartmentSchema, userStatusSchema } from "../lib/validation.js";
 
 export const usersRouter = Router();
 
@@ -14,13 +14,15 @@ usersRouter.get("/", requireAdmin, async (request, response) => {
     where: query ? {
       OR: [
         { name: { contains: query, mode: "insensitive" } },
-        { email: { contains: query, mode: "insensitive" } }
+        { email: { contains: query, mode: "insensitive" } },
+        { department: { contains: query, mode: "insensitive" } }
       ]
     } : undefined,
     select: {
       id: true,
       name: true,
       email: true,
+      department: true,
       role: true,
       mustChangePassword: true,
       isActive: true,
@@ -29,6 +31,18 @@ usersRouter.get("/", requireAdmin, async (request, response) => {
     orderBy: { createdAt: "desc" }
   });
   response.json({ users });
+});
+
+usersRouter.patch("/:id/department", requireAdmin, async (request, response) => {
+  const { department } = userDepartmentSchema.parse(request.body);
+  const userId = Array.isArray(request.params.id) ? request.params.id[0] : request.params.id;
+  if (!userId) throw new AppError("Thiếu mã tài khoản.");
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { department },
+    select: { id: true, name: true, email: true, department: true }
+  });
+  response.json({ user });
 });
 
 usersRouter.patch("/:id/status", requireAdmin, async (request, response) => {
@@ -91,9 +105,10 @@ usersRouter.post("/bulk", requireAdmin, async (request, response) => {
       throw new AppError("Tài khoản không còn quyền quản trị.", 403);
     }
     await transaction.user.createMany({
-      data: accounts.map(({ name, email, passwordHash }) => ({
+      data: accounts.map(({ name, email, department, passwordHash }) => ({
         name,
         email,
+        department,
         passwordHash,
         role: "USER" as const,
         mustChangePassword: true
@@ -102,9 +117,10 @@ usersRouter.post("/bulk", requireAdmin, async (request, response) => {
   });
 
   response.status(201).json({
-    created: users.map(({ name, email }) => ({
+    created: users.map(({ name, email, department }) => ({
       name,
-      email
+      email,
+      department
     }))
   });
 });

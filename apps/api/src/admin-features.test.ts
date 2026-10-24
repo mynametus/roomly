@@ -72,6 +72,7 @@ describe("Roomly admin features", () => {
       id: "member",
       name: "Member",
       email: "member@example.com",
+      department: "Kế toán",
       role: "USER",
       mustChangePassword: false,
       isActive: true,
@@ -83,6 +84,55 @@ describe("Roomly admin features", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.users[0]).not.toHaveProperty("passwordHash");
+    expect(response.body.users[0].department).toBe("Kế toán");
+    expect(prismaMock.user.findMany.mock.calls[0][0].select.department).toBe(true);
+  });
+
+  it("searches accounts by department without regard to case", async () => {
+    prismaMock.user.findMany.mockResolvedValue([]);
+    const response = await request(app).get("/api/users").query({ search: "  Kế toán  " })
+      .set("authorization", `Bearer ${adminToken()}`);
+    expect(response.status).toBe(200);
+    expect(prismaMock.user.findMany.mock.calls[0][0].where.OR).toContainEqual({
+      department: { contains: "Kế toán", mode: "insensitive" }
+    });
+  });
+
+  it("lets administrators update a department without changing account privileges", async () => {
+    prismaMock.user.update.mockResolvedValue({ id: "member", department: "Nhân sự" });
+    const response = await request(app).patch("/api/users/member/department")
+      .set("authorization", `Bearer ${adminToken()}`)
+      .send({ department: "  Nhân sự  ", role: "ADMIN", isActive: false });
+    expect(response.status).toBe(200);
+    expect(response.body.user.department).toBe("Nhân sự");
+    expect(prismaMock.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "member" }, data: { department: "Nhân sự" }
+    }));
+    expect(prismaMock.user.update.mock.calls[0][0].select).not.toHaveProperty("passwordHash");
+  });
+
+  it.each([undefined, null, "", "   ", "x".repeat(121)])("rejects invalid department updates: %s", async (department) => {
+    const response = await request(app).patch("/api/users/member/department")
+      .set("authorization", `Bearer ${adminToken()}`).send({ department });
+    expect(response.status).toBe(400);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("prevents members from updating departments", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ ...admin, id: "member", role: "USER" });
+    const token = createToken({ id: "member", email: "member@example.com", role: "USER" });
+    const response = await request(app).patch("/api/users/member/department")
+      .set("authorization", `Bearer ${token}`).send({ department: "Nhân sự" });
+    expect(response.status).toBe(403);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, null, "", "   ", "x".repeat(121)])("requires a valid department for new accounts: %s", async (department) => {
+    const response = await request(app).post("/api/users/bulk")
+      .set("authorization", `Bearer ${adminToken()}`)
+      .send({ users: [{ name: "Member", email: "member@example.com", department }] });
+    expect(response.status).toBe(400);
+    expect(prismaMock.user.findMany).not.toHaveBeenCalled();
   });
 
   it("does not allow a regular user to access the account directory", async () => {

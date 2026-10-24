@@ -11,7 +11,9 @@
     "test": "npm run test -w @roomly/api",
     "db:generate": "npm run db:generate -w @roomly/api",
     "db:migrate": "npm run db:migrate -w @roomly/api",
-    "db:seed": "npm run db:seed -w @roomly/api"
+    "db:seed": "npm run db:seed -w @roomly/api",
+    "db:reset": "npm run db:reset -w @roomly/api",
+    "db:inspect": "npm run db:inspect -w @roomly/api"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

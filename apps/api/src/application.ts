@@ -19,6 +19,7 @@ import {
 } from "helmet";
 import { ZodError } from "zod";
 import { AppError } from "./lib/errors.js";
+import { allowedFrontendOrigins } from "./lib/cors.js";
 import { authRouter } from "./routes/auth.js";
 import { bookingsRouter } from "./routes/bookings.js";
 import { bookingSeriesRouter } from "./routes/booking-series.js";
@@ -47,7 +48,7 @@ app.use(
   xssFilter()
 );
 app.use(cors({
-  origin: process.env.FRONTEND_URL?.split(",").map((origin) => origin.trim()) ?? "http://localhost:5173"
+  origin: allowedFrontendOrigins()
 }));
 app.use(express.json({ limit: "32kb" }));
 

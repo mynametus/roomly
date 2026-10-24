@@ -22,6 +22,7 @@ authRouter.post("/login", async (request, response) => {
     id: user.id,
     name: user.name,
     email: user.email,
+    department: user.department,
     role: user.role,
     mustChangePassword: user.mustChangePassword,
     isActive: user.isActive
@@ -45,7 +46,7 @@ authRouter.post("/change-password", requireAuth, async (request, response) => {
       passwordHash: await bcrypt.hash(newPassword, 12),
       mustChangePassword: false
     },
-    select: { id: true, name: true, email: true, role: true, mustChangePassword: true, isActive: true }
+    select: { id: true, name: true, email: true, department: true, role: true, mustChangePassword: true, isActive: true }
   });
   response.json({ user: updatedUser, token: createToken(updatedUser) });
 });
@@ -54,7 +55,7 @@ authRouter.get("/me", requireAuth, async (request, response) => {
   const userId = (request as AuthenticatedRequest).user!.id;
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, mustChangePassword: true, isActive: true }
+    select: { id: true, name: true, email: true, department: true, role: true, mustChangePassword: true, isActive: true }
   });
   if (!user) throw new AppError("Không tìm thấy tài khoản.", 404);
   response.json({ user });

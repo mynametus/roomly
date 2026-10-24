@@ -1,8 +1,11 @@
 import { z } from "zod";
 
+const departmentSchema = z.string().trim().min(1, "Vui lòng nhập bộ phận làm việc.").max(120);
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.email().transform((email) => email.trim().toLowerCase()),
+  department: departmentSchema,
   password: z.string().min(8).max(100)
 });
 
@@ -48,13 +51,17 @@ export const userStatusSchema = z.object({
   isActive: z.boolean()
 });
 
+export const userDepartmentSchema = z.object({
+  department: departmentSchema
+});
+
 export const reportRangeSchema = z.object({
   from: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),
   to: z.iso.datetime({ offset: true }).transform((value) => new Date(value))
 }).refine(({ from, to }) => to > from && to.getTime() - from.getTime() <= 366 * 24 * 60 * 60 * 1000);
 
 export const bulkUsersSchema = z.object({
-  users: z.array(registerSchema.pick({ name: true, email: true })).min(1).max(50)
+  users: z.array(registerSchema.pick({ name: true, email: true, department: true })).min(1).max(50)
 }).superRefine(({ users }, context) => {
   const seen = new Set<string>();
   users.forEach((user, index) => {

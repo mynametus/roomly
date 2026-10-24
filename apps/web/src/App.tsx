@@ -14,9 +14,9 @@ import type { Booking, BookingInput, Room, User } from "./types";
 type AuthResponse = { user: User; token: string };
 type View = "overview" | "availability" | "calendar" | "bookings" | "rooms" | "users" | "reports";
 type Notice = { kind: "success" | "error"; text: string };
-type CreatedAccount = { name: string; email: string };
+type CreatedAccount = { name: string; email: string; department: string };
 type AvailableRoomSearch = { startTime: string; endTime: string; attendeeCount: number; amenities: string[] };
-type AccountRecord = Pick<User, "id" | "name" | "email" | "role" | "isActive" | "mustChangePassword"> & { createdAt: string };
+type AccountRecord = Pick<User, "id" | "name" | "email" | "department" | "role" | "isActive" | "mustChangePassword"> & { createdAt: string };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
 const prettyDate = (date: string, options?: Intl.DateTimeFormatOptions) =>
@@ -177,7 +177,7 @@ export default function App() {
     }
   }
 
-  async function createUsers(users: { name: string; email: string }[]) {
+  async function createUsers(users: CreatedAccount[]) {
     if (!token) return false;
     setCreatedAccounts([]);
     try {
@@ -693,7 +693,7 @@ function RoomsView({ rooms, canManage, onCreate, onEdit, onUpdate }: {
 
 function UsersView({ createdAccounts, onCreate, onClearCredentials, token, currentUserId, onUpdateStatus, onResetPassword }: {
   createdAccounts: CreatedAccount[];
-  onCreate: (users: { name: string; email: string }[]) => Promise<boolean>;
+  onCreate: (users: CreatedAccount[]) => Promise<boolean>;
   onClearCredentials: () => void;
   token: string;
   currentUserId: string;
@@ -709,6 +709,12 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
   const [accountSearch, setAccountSearch] = useState("");
   const [accountError, setAccountError] = useState("");
   const [accountBusy, setAccountBusy] = useState(false);
+  const [accountRevision, setAccountRevision] = useState(0);
+  const [editingAccount, setEditingAccount] = useState<AccountRecord | null>(null);
+  const [department, setDepartment] = useState("");
+  const [departmentBusy, setDepartmentBusy] = useState(false);
+  const [departmentError, setDepartmentError] = useState("");
+  const [accountMessage, setAccountMessage] = useState("");
   const [resetResult, setResetResult] = useState<{ name: string; email: string; password: string } | null>(null);
 
   useEffect(() => {
@@ -725,7 +731,31 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
       })
       .finally(() => { if (!cancelled) setAccountBusy(false); });
     return () => { cancelled = true; };
-  }, [accountSearch, tab, token]);
+  }, [accountSearch, tab, token, accountRevision]);
+
+  async function saveDepartment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingAccount) return;
+    setDepartmentError("");
+    if (!department.trim()) {
+      setDepartmentError("Vui lòng nhập bộ phận làm việc.");
+      return;
+    }
+    setDepartmentBusy(true);
+    try {
+      await api(`/api/users/${encodeURIComponent(editingAccount.id)}/department`, {
+        method: "PATCH",
+        body: JSON.stringify({ department: department.trim() })
+      }, token);
+      setEditingAccount(null);
+      setAccountRevision((current) => current + 1);
+      setAccountMessage(`Đã cập nhật bộ phận làm việc cho ${editingAccount.name}.`);
+    } catch (requestError) {
+      setDepartmentError(requestError instanceof Error ? requestError.message : "Không thể cập nhật bộ phận làm việc.");
+    } finally {
+      setDepartmentBusy(false);
+    }
+  }
 
   async function toggleAccount(account: AccountRecord) {
     const action = account.isActive ? "khóa" : "mở khóa";
@@ -758,10 +788,10 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
     setError("");
     const lines = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const rows = lines.filter((line, index) =>
-      !(index === 0 && /^(name|tên)\s*,\s*(e-?mail)$/i.test(line))
+      !(index === 0 && /^(name|tên)\s*,\s*(e-?mail)\s*,\s*(department|bộ phận|bộ phận làm việc)$/i.test(line))
     );
     if (!rows.length) {
-      setError("Nhập ít nhất một dòng theo định dạng: Tên, email.");
+      setError("Nhập ít nhất một dòng theo định dạng: Tên, email, bộ phận làm việc.");
       return;
     }
     if (rows.length > 50) {
@@ -769,18 +799,18 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
       return;
     }
     const users = rows.map((line) => {
-      const separator = line.lastIndexOf(",");
-      if (separator < 1) return null;
-      const name = line.slice(0, separator).trim();
-      const email = line.slice(separator + 1).trim().toLowerCase();
-      if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
-      return { name, email };
+      const columns = line.split(",").map((value) => value.trim());
+      if (columns.length !== 3) return null;
+      const [name, rawEmail, department] = columns;
+      const email = rawEmail.toLowerCase();
+      if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !department || department.length > 120) return null;
+      return { name, email, department };
     });
     if (users.some((user) => user === null)) {
-      setError("Có dòng chưa hợp lệ. Mỗi dòng cần có tên và email hợp lệ, phân cách bằng dấu phẩy.");
+      setError("Có dòng chưa hợp lệ. Mỗi dòng cần có tên (2–80 ký tự), email hợp lệ và bộ phận làm việc (1–120 ký tự), phân cách bằng dấu phẩy.");
       return;
     }
-    const validUsers = users.filter((user): user is { name: string; email: string } => user !== null);
+    const validUsers = users.filter((user): user is CreatedAccount => user !== null);
     const emailSet = new Set(validUsers.map((user) => user.email));
     if (emailSet.size !== validUsers.length) {
       setError("Danh sách có email bị lặp. Hãy bỏ email trùng trước khi tạo.");
@@ -796,9 +826,9 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
 
   async function copyCredentials() {
     const csv = [
-      "Tên,Email,Mật khẩu ban đầu",
-      ...createdAccounts.map(({ name, email }) =>
-        [name, email, "12345678"].map((value) => `"${value.replaceAll('"', '""')}"`).join(",")
+      "Tên,Email,Bộ phận làm việc,Mật khẩu ban đầu",
+      ...createdAccounts.map(({ name, email, department }) =>
+        [name, email, department, "12345678"].map((value) => `"${value.replaceAll('"', '""')}"`).join(",")
       )
     ].join("\n");
     try {
@@ -823,18 +853,21 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
       {tab === "accounts" && <>
         <section className="panel table-panel admin-accounts">
           <div className="table-toolbar">
-            <div className="search-field"><Search size={17} /><input aria-label="Tìm tên hoặc email" placeholder="Tìm theo tên hoặc email..." value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} /></div>
+            <div className="search-field"><Search size={17} /><input aria-label="Tìm tên, email hoặc bộ phận" placeholder="Tìm tên, email hoặc bộ phận..." value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} /></div>
             <span className="account-count">{accounts.length} tài khoản</span>
           </div>
           {accountError && <p className="form-error account-error" role="alert">{accountError}</p>}
+          {accountMessage && <p className="copy-message" role="status">{accountMessage}</p>}
           {accountBusy ? <div className="loading-state"><span className="spinner" /> Đang tải tài khoản…</div> :
-            <div className="table-wrap"><table><thead><tr><th>TÀI KHOẢN</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>MẬT KHẨU</th><th>THAO TÁC</th></tr></thead><tbody>
+            <div className="table-wrap"><table><thead><tr><th>TÀI KHOẢN</th><th>BỘ PHẬN LÀM VIỆC</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>MẬT KHẨU</th><th>THAO TÁC</th></tr></thead><tbody>
               {accounts.map((account) => <tr key={account.id}>
                 <td><strong>{account.name}</strong><small>{account.email}</small></td>
+                <td>{account.department || "Chưa cập nhật"}</td>
                 <td>{account.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</td>
                 <td><span className={`status-pill ${account.isActive ? "confirmed" : "cancelled"}`}>{account.isActive ? "Đang hoạt động" : "Đã khóa"}</span></td>
                 <td>{account.mustChangePassword ? <span className="password-change-required">Cần đổi</span> : "Đã thiết lập"}</td>
                 <td><div className="account-actions">
+                  <button className="table-action" onClick={() => { setEditingAccount(account); setDepartment(account.department ?? ""); setDepartmentError(""); setAccountMessage(""); }}>Sửa bộ phận</button>
                   <button className="table-action" onClick={() => void resetPassword(account)}><RotateCcw size={14} /> Đặt lại</button>
                   <button className="table-action" disabled={account.id === currentUserId} onClick={() => void toggleAccount(account)}>
                     {account.isActive ? <><Ban size={14} /> Khóa</> : <><CheckCircle2 size={14} /> Mở khóa</>}
@@ -842,7 +875,7 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
                 </div></td>
               </tr>)}
             </tbody></table></div>}
-          {!accountBusy && accounts.length === 0 && <EmptyState title="Không tìm thấy tài khoản" text="Thử tìm bằng tên hoặc email khác." />}
+          {!accountBusy && accounts.length === 0 && <EmptyState title="Không tìm thấy tài khoản" text="Thử tìm bằng tên, email hoặc bộ phận khác." />}
         </section>
         {resetResult && <section className="panel reset-password-result">
           <div><strong>Đã đặt lại mật khẩu cho {resetResult.name}</strong><p>{resetResult.email} · Mật khẩu chỉ hiển thị lần này; người dùng phải đổi sau khi đăng nhập.</p></div>
@@ -860,16 +893,16 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
           </div>
           <div className="import-example">
             <strong>Định dạng danh sách</strong>
-            <code>Tên, email</code>
-            <code>Nguyễn Văn An, an@congty.vn</code>
-            <code>Trần Thị Bình, binh@congty.vn</code>
+            <code>Tên, email, bộ phận làm việc</code>
+            <code>Nguyễn Văn An, an@congty.vn, Kế toán</code>
+            <code>Trần Thị Bình, binh@congty.vn, Nhân sự</code>
           </div>
           <form className="form-stack" onSubmit={submit}>
             <label>Danh sách người dùng
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder={"Tên, email\nNguyễn Văn An, an@congty.vn\nTrần Thị Bình, binh@congty.vn"}
+                placeholder={"Tên, email, bộ phận làm việc\nNguyễn Văn An, an@congty.vn, Kế toán\nTrần Thị Bình, binh@congty.vn, Nhân sự"}
                 rows={9}
                 maxLength={15000}
                 required
@@ -898,11 +931,18 @@ function UsersView({ createdAccounts, onCreate, onClearCredentials, token, curre
               <button className="icon-button" aria-label="Ẩn mật khẩu" onClick={onClearCredentials}><X size={17} /></button>
             </div>
           </div>
-          <div className="table-wrap"><table><thead><tr><th>TÊN</th><th>EMAIL</th><th>MẬT KHẨU BAN ĐẦU</th></tr></thead><tbody>{createdAccounts.map((account) => <tr key={account.email}><td><strong>{account.name}</strong></td><td>{account.email}</td><td><code className="temporary-password">12345678</code></td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>TÊN</th><th>EMAIL</th><th>BỘ PHẬN LÀM VIỆC</th><th>MẬT KHẨU BAN ĐẦU</th></tr></thead><tbody>{createdAccounts.map((account) => <tr key={account.email}><td><strong>{account.name}</strong></td><td>{account.email}</td><td>{account.department}</td><td><code className="temporary-password">12345678</code></td></tr>)}</tbody></table></div>
           {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
         </section>
       )}
       </>}
+      {editingAccount && <Modal title="Cập nhật bộ phận làm việc" subtitle={`${editingAccount.name} · ${editingAccount.email}`} onClose={() => { if (!departmentBusy) setEditingAccount(null); }}>
+        <form className="form-stack" onSubmit={saveDepartment}>
+          <label>Bộ phận làm việc<input value={department} onChange={(event) => setDepartment(event.target.value)} required maxLength={120} placeholder="Ví dụ: Kế toán" autoFocus disabled={departmentBusy} /></label>
+          {departmentError && <p className="form-error" role="alert">{departmentError}</p>}
+          <div className="modal-actions"><button type="button" className="button button-outline" disabled={departmentBusy} onClick={() => setEditingAccount(null)}>Hủy</button><button className="button button-primary" disabled={departmentBusy}>{departmentBusy ? "Đang lưu…" : "Lưu thay đổi"}</button></div>
+        </form>
+      </Modal>}
     </>
   );
 }

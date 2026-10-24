@@ -25,7 +25,11 @@ npm run dev
 
 Mở `http://localhost:5173`. Đăng nhập bằng email và mật khẩu quản trị viên đã khai báo trong `.env`. Đây là ứng dụng nội bộ: tự đăng ký đã tắt, quản trị viên cấp tài khoản từ mục **Quản lý tài khoản**.
 
-`db:seed` tạo ba phòng mẫu. Nếu có `ADMIN_EMAIL` và `ADMIN_PASSWORD`, lệnh cũng tạo hoặc nâng tài khoản đó lên quyền quản trị viên. Không dùng mật khẩu mẫu khi triển khai thật.
+Nếu `.env` của frontend được tải từ Vercel, thêm `VITE_API_URL="http://localhost:4000"` vào `apps/web/.env.local` để local gọi API local. API tự cho phép `http://localhost:5173` và `http://127.0.0.1:5173` khi chạy phát triển; trên production/Vercel chỉ các địa chỉ trong `FRONTEND_URL` được phép. Chạy `npm run dev` từ thư mục gốc để khởi động cả giao diện lẫn API.
+
+`db:seed` chỉ tạo hoặc cập nhật tài khoản quản trị từ `ADMIN_EMAIL` và `ADMIN_PASSWORD`, không tạo phòng mẫu. Có thể cấu hình `ADMIN_NAME` và `ADMIN_DEPARTMENT` (mặc định `Quản trị hệ thống`). Không dùng mật khẩu mẫu khi triển khai thật. Khi cần dữ liệu demo, chạy `npm run db:seed -w @roomly/api -- --demo` để thêm ba phòng mẫu.
+
+Để bắt đầu nhập dữ liệu thật, chạy `npm run db:inspect` để kiểm tra database và số bản ghi, rồi `npm run db:reset`. Lệnh reset xóa toàn bộ lịch đặt, chuỗi định kỳ, phòng và tài khoản, sau đó tạo lại duy nhất tài khoản quản trị đã cấu hình; toàn bộ thao tác diễn ra trong một transaction. Cần có `ADMIN_EMAIL` và `ADMIN_PASSWORD` trước khi chạy. Các phiên đăng nhập cũ sẽ hết hiệu lực; đăng nhập lại bằng tài khoản quản trị. Lệnh dùng database trong `apps/api/.env` hoặc biến môi trường `DATABASE_URL` đang được đặt.
 
 ## Quy tắc nghiệp vụ
 
@@ -35,6 +39,7 @@ Mở `http://localhost:5173`. Đăng nhập bằng email và mật khẩu quản
 - Hủy một buổi giữ lại lịch sử. Với lịch định kỳ, người dùng có thể chọn hủy riêng buổi hiện tại hoặc hủy buổi đó và tất cả buổi tiếp theo.
 - Người dùng có thể tìm phòng còn trống theo thời gian, sức chứa và tiện nghi. Lịch đặt vẫn được kiểm tra lại khi xác nhận để tránh đặt trùng.
 - Quản trị viên có thể thêm/chỉnh sửa phòng và tiện nghi, tạm ngưng/kích hoạt phòng, xem/hủy lịch của mọi người, tạo tối đa 50 tài khoản mỗi lượt, tìm/khóa/mở tài khoản, đặt lại mật khẩu và xem báo cáo sử dụng phòng.
+- Mỗi tài khoản mới cần có bộ phận làm việc (tối đa 120 ký tự). Khi thêm hàng loạt, nhập `Tên, email, bộ phận làm việc` trên từng dòng. Quản trị viên có thể sửa bộ phận và tìm tài khoản theo tên, email hoặc bộ phận. Tài khoản cũ chưa có bộ phận hiển thị `Chưa cập nhật`.
 - Tài khoản do admin tạo dùng mật khẩu ban đầu `12345678`; tài khoản được đặt lại dùng mật khẩu ngẫu nhiên chỉ hiển thị một lần. Cả hai trường hợp đều bắt buộc đổi mật khẩu sau khi đăng nhập. Tài khoản bị khóa sẽ mất quyền truy cập ngay cả khi phiên đăng nhập cũ còn hiệu lực.
 
 ## Kiểm thử và build
